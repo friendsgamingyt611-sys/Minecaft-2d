@@ -1,0 +1,5 @@
+{
+  "name": "Minecraft 2D",
+  "description": "A 2D Minecraft-style game built with TypeScript and HTML5 Canvas, featuring world generation, player movement, block placement, and a basic inventory system. This is version 1 of a multi-stage development plan.",
+  "requestFramePermissions": []
+}
