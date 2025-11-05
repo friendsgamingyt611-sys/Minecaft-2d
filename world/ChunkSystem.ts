@@ -1,13 +1,17 @@
 
+
 import { BlockId, Vector2 } from '../types';
-import { CHUNK_SIZE, BLOCK_SIZE } from '../core/Constants';
+// FIX: Import CHUNK_PIXEL_SIZE to calculate player's current chunk.
+import { CHUNK_SIZE, BLOCK_SIZE, VIEW_DISTANCE_CHUNKS, CHUNK_PIXEL_SIZE, CHEST_SLOTS } from '../core/Constants';
 import { WorldGenerator } from './WorldGenerator';
 import { getBlockType } from './BlockRegistry';
+import { Inventory } from './Inventory';
 
 class Chunk {
   public blocks: Uint8Array;
   public chunkX: number;
   public chunkY: number;
+  public blockEntities: Map<string, any> = new Map();
 
   constructor(chunkX: number, chunkY: number) {
     this.chunkX = chunkX;
@@ -27,6 +31,19 @@ class Chunk {
       return;
     }
     this.blocks[localY * CHUNK_SIZE + localX] = blockId;
+    
+    const key = `${localX},${localY}`;
+    if (blockId === BlockId.CHEST) {
+        if (!this.blockEntities.has(key)) {
+            this.blockEntities.set(key, { inventory: new Inventory(CHEST_SLOTS) });
+        }
+    } else {
+        this.blockEntities.delete(key);
+    }
+  }
+
+  getBlockEntity(localX: number, localY: number) {
+      return this.blockEntities.get(`${localX},${localY}`);
   }
 }
 
@@ -39,7 +56,7 @@ export class ChunkSystem {
   }
   
   getSpawnPoint(): Vector2 {
-    const surfaceY = this.generator.getTerrainHeight(0);
+    const surfaceY = this.generator.getSurfaceHeight(0);
     return { x: 0, y: (surfaceY - 2) * BLOCK_SIZE };
   }
 
@@ -86,7 +103,33 @@ export class ChunkSystem {
     chunk.setBlock(localX, localY, blockId);
   }
 
+  getChestInventory(worldX: number, worldY: number): Inventory | null {
+      const chunkX = Math.floor(worldX / CHUNK_SIZE);
+      const chunkY = Math.floor(worldY / CHUNK_SIZE);
+      const localX = worldX - chunkX * CHUNK_SIZE;
+      const localY = worldY - chunkY * CHUNK_SIZE;
+      const chunk = this.getChunk(chunkX, chunkY);
+      const entity = chunk.getBlockEntity(localX, localY);
+      return entity ? entity.inventory : null;
+  }
+
   update(playerPosition: Vector2) {
-    // Future: Implement chunk loading/unloading logic here
+    const playerChunkX = Math.floor(playerPosition.x / CHUNK_PIXEL_SIZE);
+    const playerChunkY = Math.floor(playerPosition.y / CHUNK_PIXEL_SIZE);
+
+    for (let y = playerChunkY - VIEW_DISTANCE_CHUNKS; y <= playerChunkY + VIEW_DISTANCE_CHUNKS; y++) {
+      for (let x = playerChunkX - VIEW_DISTANCE_CHUNKS; x <= playerChunkX + VIEW_DISTANCE_CHUNKS; x++) {
+        this.getChunk(x, y);
+      }
+    }
+    
+    for (const key of this.chunks.keys()) {
+        const [chunkX, chunkY] = key.split(',').map(Number);
+        const distanceX = Math.abs(playerChunkX - chunkX);
+        const distanceY = Math.abs(playerChunkY - chunkY);
+        if (distanceX > VIEW_DISTANCE_CHUNKS + 2 || distanceY > VIEW_DISTANCE_CHUNKS + 2) {
+            this.chunks.delete(key);
+        }
+    }
   }
 }

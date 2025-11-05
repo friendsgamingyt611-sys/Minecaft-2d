@@ -1,10 +1,15 @@
 
+
 import { Vector2 } from '../types';
 
 export class MouseHandler {
   public position: Vector2 = { x: 0, y: 0 };
   public isLeftDown: boolean = false;
   public isRightDown: boolean = false;
+  public isLeftClicked: boolean = false;
+  public isRightClicked: boolean = false;
+  public isLeftUp: boolean = false;
+  public scrollDelta: number = 0;
   
   private canvas: HTMLCanvasElement;
 
@@ -18,6 +23,7 @@ export class MouseHandler {
     this.canvas.removeEventListener('mousedown', this.handleMouseDown);
     this.canvas.removeEventListener('mouseup', this.handleMouseUp);
     this.canvas.removeEventListener('contextmenu', this.handleContextMenu);
+    this.canvas.removeEventListener('wheel', this.handleWheel);
   }
 
   private addEventListeners() {
@@ -25,6 +31,14 @@ export class MouseHandler {
     this.canvas.addEventListener('mousedown', this.handleMouseDown);
     this.canvas.addEventListener('mouseup', this.handleMouseUp);
     this.canvas.addEventListener('contextmenu', this.handleContextMenu);
+    this.canvas.addEventListener('wheel', this.handleWheel);
+  }
+
+  public lateUpdate() {
+      this.isLeftClicked = false;
+      this.isRightClicked = false;
+      this.isLeftUp = false;
+      this.scrollDelta = 0;
   }
 
   private handleMouseMove = (event: MouseEvent) => {
@@ -38,14 +52,17 @@ export class MouseHandler {
   private handleMouseDown = (event: MouseEvent) => {
     if (event.button === 0) {
       this.isLeftDown = true;
+      this.isLeftClicked = true;
     } else if (event.button === 2) {
       this.isRightDown = true;
+      this.isRightClicked = true;
     }
   };
 
   private handleMouseUp = (event: MouseEvent) => {
     if (event.button === 0) {
       this.isLeftDown = false;
+      this.isLeftUp = true;
     } else if (event.button === 2) {
       this.isRightDown = false;
     }
@@ -54,4 +71,19 @@ export class MouseHandler {
   private handleContextMenu = (event: MouseEvent) => {
     event.preventDefault();
   };
+
+  private handleWheel = (event: WheelEvent) => {
+    event.preventDefault();
+    if (event.deltaY < 0) {
+        this.scrollDelta = -1; // Up
+    } else if (event.deltaY > 0) {
+        this.scrollDelta = 1; // Down
+    }
+  }
+
+  public consumeScroll(): number {
+    const delta = this.scrollDelta;
+    this.scrollDelta = 0;
+    return delta;
+  }
 }

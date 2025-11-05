@@ -1,8 +1,11 @@
 
+
 import { SceneManager } from '../scenes/SceneManager';
 import { TitleScene } from '../scenes/TitleScene';
 import { InputManager } from '../input/InputManager';
 import { MouseHandler } from '../input/MouseHandler';
+import { SettingsManager } from './SettingsManager';
+import { TouchHandler } from '../input/TouchHandler';
 
 export class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -10,6 +13,7 @@ export class GameEngine {
   private sceneManager: SceneManager;
   private inputManager: InputManager;
   private mouseHandler: MouseHandler;
+  private touchHandler: TouchHandler;
   private lastTime: number = 0;
   private isRunning: boolean = false;
   private animationFrameId: number = 0;
@@ -21,9 +25,14 @@ export class GameEngine {
       throw new Error('Failed to get 2D context from canvas');
     }
     this.ctx = context;
+    
+    // Initialize settings first
+    SettingsManager.instance.load();
+
     this.inputManager = new InputManager();
     this.mouseHandler = new MouseHandler(this.canvas);
-    this.sceneManager = new SceneManager(this.inputManager, this.mouseHandler);
+    this.touchHandler = new TouchHandler(this.canvas);
+    this.sceneManager = new SceneManager(this.inputManager, this.mouseHandler, this.touchHandler);
   }
 
   start() {
@@ -39,6 +48,7 @@ export class GameEngine {
     cancelAnimationFrame(this.animationFrameId);
     this.inputManager.dispose();
     this.mouseHandler.dispose();
+    this.touchHandler.dispose();
   }
 
   private gameLoop = (timestamp: number) => {
@@ -50,6 +60,10 @@ export class GameEngine {
     this.update(deltaTime);
     this.render();
     
+    // Centralize late updates for input handlers
+    this.mouseHandler.lateUpdate();
+    this.touchHandler.lateUpdate();
+
     this.animationFrameId = requestAnimationFrame(this.gameLoop);
   };
 

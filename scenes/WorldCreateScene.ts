@@ -1,7 +1,8 @@
 import { Scene, SceneManager } from './SceneManager';
 import { GameScene } from './GameScene';
 import { GameState } from '../core/GameState';
-import { TitleScene } from './TitleScene';
+import { VirtualKeyboard } from '../input/VirtualKeyboard';
+import { Vector2 } from '../types';
 
 // --- UI Components for this Scene ---
 
@@ -55,14 +56,6 @@ class InputBox implements UIComponent {
             ctx.fillRect(cursorX, this.y + 8, 2, this.height - 16);
         }
     }
-    
-    addChar(char: string): void {
-        this.text += char;
-    }
-
-    deleteChar(): void {
-        this.text = this.text.slice(0, -1);
-    }
 }
 
 class Button implements UIComponent {
@@ -110,47 +103,35 @@ export class WorldCreateScene implements Scene {
     }
 
     enter(): void {
-        this.sceneManager.mouseHandler['canvas'].addEventListener('click', this.handleMouseClick);
-        window.addEventListener('keydown', this.handleKeyDown);
+        window.addEventListener('keydown', this.handlePhysicalKeyDown);
     }
 
     exit(): void {
-        this.sceneManager.mouseHandler['canvas'].removeEventListener('click', this.handleMouseClick);
-        window.removeEventListener('keydown', this.handleKeyDown);
+        VirtualKeyboard.instance.hide();
+        window.removeEventListener('keydown', this.handlePhysicalKeyDown);
     }
-    
-    private handleMouseClick = () => {
-        if (this.hoverComponent) {
-            this.activeComponent = this.hoverComponent;
-            if (this.hoverComponent.onClick) {
-                this.hoverComponent.onClick();
-            }
-        } else {
-            this.activeComponent = null;
-        }
-    };
 
-    private handleKeyDown = (event: KeyboardEvent) => {
+    private handlePhysicalKeyDown = (event: KeyboardEvent) => {
         if (!(this.activeComponent instanceof InputBox)) return;
 
-        const forbiddenKeys = [
-            'Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Escape', 'F1', 'F2', 'F3', 
-            'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
-            'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'
-        ];
+        const inputBox = this.activeComponent;
 
         if (event.key === 'Backspace') {
-            this.activeComponent.deleteChar();
+            inputBox.text = inputBox.text.slice(0, -1);
         } else if (event.key === 'Tab') {
             event.preventDefault();
-            this.activeComponent = this.activeComponent === this.worldNameInput 
+            const nextActive = this.activeComponent === this.worldNameInput 
                 ? this.worldSeedInput 
                 : this.worldNameInput;
+            this.activeComponent = nextActive;
+            this.activateInputBox(nextActive);
         } else if (event.key === 'Enter') {
             this.createWorld();
-        } else if (!forbiddenKeys.includes(event.key) && this.activeComponent.text.length < 32) {
-            this.activeComponent.addChar(event.key);
+        } else if (event.key.length === 1 && inputBox.text.length < 32) {
+            inputBox.text += event.key;
         }
+        
+        VirtualKeyboard.instance.setText(inputBox.text);
     };
 
     private createWorld() {
@@ -160,7 +141,7 @@ export class WorldCreateScene implements Scene {
         }
         let seed = this.worldSeedInput.text.trim();
         if (seed === '') {
-            seed = (Math.random() * 1000000).toString();
+            seed = Date.now().toString();
         }
         const gameState = new GameState({ worldSeed: seed });
         this.sceneManager.switchScene(new GameScene(this.sceneManager, gameState));
@@ -168,6 +149,23 @@ export class WorldCreateScene implements Scene {
     
     private goBack() {
         this.sceneManager.popScene();
+    }
+
+    private activateInputBox(inputBox: InputBox) {
+        VirtualKeyboard.instance.show({
+            text: inputBox.text,
+            onInput: (newText) => {
+                if (this.activeComponent === inputBox) {
+                    inputBox.text = newText;
+                }
+            },
+            onEnter: () => this.createWorld(),
+            onBlur: () => {
+                if (this.activeComponent === inputBox) {
+                    this.activeComponent = null;
+                }
+            }
+        });
     }
 
     update(deltaTime: number): void {
@@ -178,6 +176,42 @@ export class WorldCreateScene implements Scene {
                 mousePos.y >= component.y && mousePos.y <= component.y + component.height) {
                 this.hoverComponent = component;
                 break;
+            }
+        }
+        
+        const pointerEndedPositions: Vector2[] = [...this.sceneManager.touchHandler.justEndedTouches];
+        if (this.sceneManager.mouseHandler.isLeftClicked) {
+            pointerEndedPositions.push(this.sceneManager.mouseHandler.position);
+        }
+
+        let clickedOnComponent = false;
+        if (pointerEndedPositions.length > 0) {
+            for (const pos of pointerEndedPositions) {
+                for (const component of this.uiComponents) {
+                    if (pos.x >= component.x && pos.x <= component.x + component.width &&
+                        pos.y >= component.y && pos.y <= component.y + component.height) {
+                        
+                        clickedOnComponent = true;
+                        
+                        if (component instanceof InputBox) {
+                            this.activeComponent = component;
+                            this.activateInputBox(component);
+                        } else {
+                            this.activeComponent = null;
+                            VirtualKeyboard.instance.hide();
+                            if (component.onClick) {
+                                component.onClick();
+                            }
+                        }
+                        break;
+                    }
+                }
+                if (clickedOnComponent) break;
+            }
+
+            if (!clickedOnComponent) {
+                this.activeComponent = null;
+                VirtualKeyboard.instance.hide();
             }
         }
         

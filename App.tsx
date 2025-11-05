@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect } from 'react';
 import { GameEngine } from './core/GameEngine';
 
@@ -19,8 +20,8 @@ const App: React.FC = () => {
           width = innerHeight * aspectRatio;
         }
         
-        canvas.width = 1280; // Game resolution
-        canvas.height = 720;
+        canvas.width = 960; // Game resolution (from 1280)
+        canvas.height = 540; // (from 720)
         canvas.style.width = `${width}px`;
         canvas.style.height = `${height}px`;
       };

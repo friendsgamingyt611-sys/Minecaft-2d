@@ -1,6 +1,7 @@
 
 import { InputManager } from '../input/InputManager';
 import { MouseHandler } from '../input/MouseHandler';
+import { TouchHandler } from '../input/TouchHandler';
 
 export interface Scene {
   update(deltaTime: number): void;
@@ -13,10 +14,12 @@ export class SceneManager {
   private scenes: Scene[] = [];
   public inputManager: InputManager;
   public mouseHandler: MouseHandler;
+  public touchHandler: TouchHandler;
 
-  constructor(inputManager: InputManager, mouseHandler: MouseHandler) {
+  constructor(inputManager: InputManager, mouseHandler: MouseHandler, touchHandler: TouchHandler) {
     this.inputManager = inputManager;
     this.mouseHandler = mouseHandler;
+    this.touchHandler = touchHandler;
   }
 
   pushScene(scene: Scene) {
@@ -38,7 +41,9 @@ export class SceneManager {
   }
   
   switchScene(scene: Scene) {
-    this.popScene();
+    while(this.scenes.length > 0) {
+        this.popScene();
+    }
     this.pushScene(scene);
   }
 

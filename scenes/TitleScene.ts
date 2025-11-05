@@ -1,10 +1,15 @@
+
 import { Scene, SceneManager } from './SceneManager';
+import { SettingsScene } from './SettingsScene';
 import { WorldCreateScene } from './WorldCreateScene';
 
 export class TitleScene implements Scene {
   private sceneManager: SceneManager;
   private buttons: { label: string; x: number; y: number; width: number; height: number; action: () => void }[] = [];
   private title = "Minecraft 2D";
+  private splashText = "Looks familiar!";
+  private hoveredButton: any = null;
+  private cloudOffset: number = 0;
   
   constructor(sceneManager: SceneManager) {
     this.sceneManager = sceneManager;
@@ -15,78 +20,164 @@ export class TitleScene implements Scene {
     const canvasWidth = canvas.width;
     const canvasHeight = canvas.height;
     
+    const buttonWidth = 300;
+    const buttonHeight = 50;
+    const spacing = 20;
+    const startY = canvasHeight / 2 - 20;
+    
     this.buttons = [
         {
-            label: "Create World",
-            x: canvasWidth / 2 - 150,
-            y: canvasHeight / 2,
-            width: 300,
-            height: 50,
+            label: "Singleplayer",
+            x: canvasWidth / 2 - buttonWidth / 2,
+            y: startY,
+            width: buttonWidth,
+            height: buttonHeight,
             action: () => this.sceneManager.pushScene(new WorldCreateScene(this.sceneManager))
         },
         {
-            label: "Options",
-            x: canvasWidth / 2 - 150,
-            y: canvasHeight / 2 + 70,
-            width: 300,
-            height: 50,
-            action: () => console.log("Options clicked!")
+            label: "Settings",
+            x: canvasWidth / 2 - buttonWidth / 2,
+            y: startY + buttonHeight + spacing,
+            width: buttonWidth,
+            height: buttonHeight,
+            action: () => this.sceneManager.pushScene(new SettingsScene(this.sceneManager))
         }
     ];
-
-    this.sceneManager.mouseHandler['canvas'].addEventListener('click', this.handleMouseClick);
   }
   
-  exit(): void {
-    this.sceneManager.mouseHandler['canvas'].removeEventListener('click', this.handleMouseClick);
-  }
+  exit(): void {}
   
-  private handleMouseClick = (event: MouseEvent) => {
-    const mousePos = this.sceneManager.mouseHandler.position;
+  private checkAndTriggerButton(pos: { x: number, y: number }): boolean {
     for (const button of this.buttons) {
-        if (mousePos.x >= button.x && mousePos.x <= button.x + button.width &&
-            mousePos.y >= button.y && mousePos.y <= button.y + button.height) {
+        if (pos.x >= button.x && pos.x <= button.x + button.width &&
+            pos.y >= button.y && pos.y <= button.y + button.height) {
             button.action();
-            break;
+            return true;
         }
     }
-  };
+    return false;
+  }
   
   update(deltaTime: number): void {
-     // No update logic needed for static title screen
+     // Animate clouds
+     this.cloudOffset += deltaTime * 10;
+     const canvasWidth = this.sceneManager.mouseHandler['canvas'].width;
+     if (this.cloudOffset > canvasWidth + 200) {
+         this.cloudOffset = -200;
+     }
+
+     // Handle hover for visual feedback (mouse only)
+     const mousePos = this.sceneManager.mouseHandler.position;
+     this.hoveredButton = null;
+     for (const button of this.buttons) {
+        if (mousePos.x >= button.x && mousePos.x <= button.x + button.width &&
+            mousePos.y >= button.y && mousePos.y <= button.y + button.height) {
+            this.hoveredButton = button;
+            break;
+        }
+     }
+
+     // Handle mouse click
+     if (this.sceneManager.mouseHandler.isLeftClicked) {
+         if (this.checkAndTriggerButton(mousePos)) return;
+     }
+
+     // Handle touch taps
+     for (const touch of this.sceneManager.touchHandler.justEndedTouches) {
+         if (this.checkAndTriggerButton(touch)) return;
+     }
+  }
+
+  private renderClouds(ctx: CanvasRenderingContext2D) {
+      ctx.fillStyle = '#ffffff';
+      const drawCloud = (x: number, y: number, size: number) => {
+          ctx.fillRect(x, y, size, size/3);
+          ctx.fillRect(x - size/4, y + size/6, size*1.5, size/2);
+      }
+      drawCloud(this.cloudOffset, 100, 150);
+      drawCloud(this.cloudOffset - 400, 150, 120);
+      drawCloud(this.cloudOffset + 300, 80, 180);
   }
 
   render(ctx: CanvasRenderingContext2D): void {
-    // Background
-    ctx.fillStyle = '#63a3ff'; // Sky blue
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    const canvasWidth = ctx.canvas.width;
+    const canvasHeight = ctx.canvas.height;
+    
+    // Background Sky
+    ctx.fillStyle = '#63a3ff'; 
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    // Clouds
+    this.renderClouds(ctx);
+
+    // Background Ground
+    const groundHeight = canvasHeight * 0.3;
+    ctx.fillStyle = '#8b5a2b'; // Dirt
+    ctx.fillRect(0, canvasHeight - groundHeight, canvasWidth, groundHeight);
+    ctx.fillStyle = '#6a9b3d'; // Grass
+    ctx.fillRect(0, canvasHeight - groundHeight, canvasWidth, 20);
+    ctx.fillStyle = 'rgba(0,0,0,0.1)'; // Grass shading
+    ctx.fillRect(0, canvasHeight - groundHeight + 20, canvasWidth, 5);
+
 
     // Title
     ctx.font = "80px Minecraftia";
-    ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
-    ctx.strokeStyle = '#383838';
     ctx.lineWidth = 8;
-    ctx.strokeText(this.title, ctx.canvas.width / 2, 200);
-    ctx.fillText(this.title, ctx.canvas.width / 2, 200);
+    // 3D effect
+    ctx.fillStyle = '#3e3e3e';
+    ctx.fillText(this.title, canvasWidth / 2 + 5, 205);
+    // Main Title Text
+    const gradient = ctx.createLinearGradient(0, 120, 0, 200);
+    gradient.addColorStop(0, '#d8d8d8');
+    gradient.addColorStop(1, '#a0a0a0');
+    ctx.fillStyle = gradient;
+    ctx.strokeStyle = '#383838';
+    ctx.strokeText(this.title, canvasWidth / 2, 200);
+    ctx.fillText(this.title, canvasWidth / 2, 200);
+
+    // Splash Text
+    ctx.save();
+    ctx.translate(canvasWidth / 2 + 200, 220);
+    ctx.rotate(0.3);
+    ctx.font = "30px Minecraftia";
+    ctx.fillStyle = '#ffff00';
+    ctx.strokeStyle = '#383838';
+    ctx.lineWidth = 4;
+    ctx.strokeText(this.splashText, 0, 0);
+    ctx.fillText(this.splashText, 0, 0);
+    ctx.restore();
+
 
     // Buttons
-    const mousePos = this.sceneManager.mouseHandler.position;
     this.buttons.forEach(button => {
-        const isHovered = mousePos.x >= button.x && mousePos.x <= button.x + button.width &&
-                          mousePos.y >= button.y && mousePos.y <= button.y + button.height;
+        const isHovered = button === this.hoveredButton;
 
-        ctx.fillStyle = isHovered ? '#a0a0a0' : '#7f7f7f';
-        ctx.strokeStyle = '#383838';
-        ctx.lineWidth = 4;
+        // Classic Minecraft button style
+        ctx.fillStyle = '#383838'; // Dark border
         ctx.fillRect(button.x, button.y, button.width, button.height);
-        ctx.strokeRect(button.x, button.y, button.width, button.height);
+        
+        const inset = 4;
+        ctx.fillStyle = isHovered ? '#b0b0b0' : '#7f7f7f'; // Main fill
+        ctx.fillRect(button.x + inset, button.y + inset, button.width - inset * 2, button.height - inset * 2);
 
+        // Text
         ctx.font = "30px Minecraftia";
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        // Text shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillText(button.label, button.x + button.width / 2 + 2, button.y + button.height / 2 + 2);
+        // Main text
+        ctx.fillStyle = isHovered ? '#ffffa0' : '#ffffff';
         ctx.fillText(button.label, button.x + button.width / 2, button.y + button.height / 2);
     });
+
+    // Version info
+    ctx.font = "18px Minecraftia";
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.fillText("Minecraft 2D v2.5.1", 10, canvasHeight - 10);
   }
 }

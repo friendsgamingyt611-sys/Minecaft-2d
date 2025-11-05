@@ -24,4 +24,11 @@ export class Camera {
     this.position.x += (targetX - this.position.x) * this.smoothSpeed;
     this.position.y += (targetY - this.position.y) * this.smoothSpeed;
   }
+  
+  public screenToWorld(screenPos: Vector2): Vector2 {
+    return {
+        x: screenPos.x + this.position.x,
+        y: screenPos.y + this.position.y
+    };
+  }
 }
