@@ -24,6 +24,7 @@ export class HUD {
   public render(ctx: CanvasRenderingContext2D): void {
     this.renderHealthBar(ctx);
     this.renderHungerBar(ctx);
+    this.renderXpBar(ctx);
     this.renderHotbar(ctx);
     
     if (SettingsManager.instance.getEffectiveControlScheme() === 'touch') {
@@ -173,5 +174,34 @@ export class HUD {
 
     }
     ctx.restore();
+  }
+
+  private renderXpBar(ctx: CanvasRenderingContext2D): void {
+    const hudWidth = HOTBAR_SLOTS * HOTBAR_SLOT_SIZE;
+    const barY = this.canvas.height - HOTBAR_SLOT_SIZE - 20 - 15;
+    const barX = (this.canvas.width - hudWidth) / 2;
+    const barHeight = 10;
+
+    // Bar background
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(barX, barY, hudWidth, barHeight);
+    
+    // XP Fill
+    const requiredXp = this.player.getRequiredXPForLevel(this.player.level);
+    const progress = this.player.experience / requiredXp;
+    ctx.fillStyle = '#7FFF00';
+    ctx.fillRect(barX, barY, hudWidth * progress, barHeight);
+    
+    // Level number
+    if (this.player.level > 0) {
+        const text = this.player.level.toString();
+        ctx.font = "20px Minecraftia";
+        ctx.textAlign = 'center';
+
+        ctx.fillStyle = '#3f3f3f'; // Shadow
+        ctx.fillText(text, this.canvas.width / 2 + 1, barY - 10 + 1);
+        ctx.fillStyle = '#80FF20'; // Main text
+        ctx.fillText(text, this.canvas.width / 2, barY - 10);
+    }
   }
 }

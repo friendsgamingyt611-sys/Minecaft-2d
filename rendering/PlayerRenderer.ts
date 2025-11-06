@@ -1,5 +1,8 @@
 import { Player } from '../entities/Player';
-import { PlayerPose, BodyPart } from '../types';
+import { PlayerPose, BodyPart, ToolInfo, ItemId } from '../types';
+import { CraftingSystem } from '../crafting/CraftingSystem';
+import { BLOCK_SIZE } from '../core/Constants';
+import { getBlockType } from '../world/BlockRegistry';
 
 export class PlayerRenderer {
 
@@ -138,6 +141,125 @@ export class PlayerRenderer {
         ctx.restore();
     }
 
+    private renderHeldItem(ctx: CanvasRenderingContext2D, player: Player, pose: PlayerPose): void {
+      const heldItem = player.inventory.getItem(player.activeHotbarSlot);
+      if (!heldItem || player.animationState === 'sprinting') return;
+      
+      const itemInfo = CraftingSystem.getItemInfo(heldItem.id);
+      if (!itemInfo) return;
+      
+      const frontArm = pose.leftArm.z > pose.rightArm.z ? pose.leftArm : pose.rightArm;
+      
+      ctx.save();
+      
+      // We are in a coordinate system where (0,0) is the player's root (center of feet)
+      // and has been scaled by facingDirection. We need to find the end of the arm in this space.
+      const armPivotX = frontArm.x - frontArm.width/2;
+      const armPivotY = frontArm.y - frontArm.height/2;
+
+      ctx.translate(armPivotX, armPivotY);
+      ctx.rotate(frontArm.rotation);
+      
+      // Move to the "hand" position, near the end of the arm
+      ctx.translate(0, frontArm.height * 0.8);
+      
+      // Rotate item to a natural angle
+      ctx.rotate(Math.PI / 4);
+      
+      const itemSize = BLOCK_SIZE * 0.7;
+      ctx.translate(-itemSize / 2, -itemSize / 2);
+      
+      if (itemInfo.toolInfo) {
+        // FIX: Pass the `toolInfo` property of the `itemInfo` object, not the `itemInfo` object itself.
+        this.drawToolIcon(ctx, itemInfo.toolInfo, itemSize);
+      } else if (itemInfo.blockId) {
+        const blockType = getBlockType(itemInfo.blockId);
+        if (blockType) {
+          if (blockType.texture) {
+            blockType.texture(ctx, 0, 0, itemSize);
+          } else {
+            ctx.fillStyle = blockType.color;
+            ctx.fillRect(0, 0, itemSize, itemSize);
+          }
+        }
+      }
+      
+      ctx.restore();
+    }
+
+    private drawToolIcon(ctx: CanvasRenderingContext2D, toolInfo: ToolInfo, size: number): void {
+      const colors = {
+        wood: '#8B4513',
+        stone: '#808080',
+        iron: '#C0C0C0',
+        diamond: '#68DED1',
+        none: '#888'
+      };
+      
+      const materialColor = colors[toolInfo.tier] || '#888';
+      const handleColor = '#8B4513';
+      
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // Draw based on tool type
+      switch (toolInfo.type) {
+        case 'pickaxe':
+            // Handle
+            ctx.strokeStyle = handleColor;
+            ctx.lineWidth = size * 0.1;
+            ctx.beginPath();
+            ctx.moveTo(size * 0.8, size * 0.2);
+            ctx.lineTo(size * 0.2, size * 0.8);
+            ctx.stroke();
+            // Head
+            ctx.strokeStyle = materialColor;
+            ctx.lineWidth = size * 0.15;
+            ctx.beginPath();
+            ctx.moveTo(size * 0.9, size * 0.1);
+            ctx.lineTo(size * 0.7, size * 0.3);
+            ctx.moveTo(size * 0.7, size * 0.1);
+            ctx.lineTo(size * 0.9, size * 0.3);
+            ctx.stroke();
+          break;
+        case 'axe':
+            // Handle
+            ctx.strokeStyle = handleColor;
+            ctx.lineWidth = size * 0.1;
+            ctx.beginPath();
+            ctx.moveTo(size * 0.8, size * 0.2);
+            ctx.lineTo(size * 0.2, size * 0.8);
+            ctx.stroke();
+            // Head
+            ctx.fillStyle = materialColor;
+            ctx.beginPath();
+            ctx.moveTo(size * 0.9, size * 0.1);
+            ctx.quadraticCurveTo(size * 0.6, size * 0.0, size * 0.5, size * 0.4);
+            ctx.quadraticCurveTo(size * 0.4, size * 0.0, size * 0.7, size * 0.3);
+            ctx.closePath();
+            ctx.fill();
+          break;
+        case 'shovel':
+            // Handle
+            ctx.strokeStyle = handleColor;
+            ctx.lineWidth = size * 0.1;
+            ctx.beginPath();
+            ctx.moveTo(size * 0.8, size * 0.2);
+            ctx.lineTo(size * 0.2, size * 0.8);
+            ctx.stroke();
+            // Head
+            ctx.fillStyle = materialColor;
+            ctx.beginPath();
+            ctx.moveTo(size*0.9, size*0.1);
+            ctx.quadraticCurveTo(size*0.7, -size*0.1, size*0.6, size*0.3);
+            ctx.lineTo(size*0.8, size*0.4);
+            ctx.closePath();
+            ctx.fill();
+          break;
+      }
+    }
+
+
     public render(ctx: CanvasRenderingContext2D, player: Player, pose: PlayerPose): void {
         ctx.save();
         // Center the drawing operations on the player's base position and handle facing direction
@@ -155,6 +277,9 @@ export class PlayerRenderer {
         for (const part of parts) {
             this.drawPart(ctx, part, player, player.facingDirection);
         }
+        
+        // Add held item rendering AFTER body parts but BEFORE face
+        this.renderHeldItem(ctx, player, pose);
         
         // Draw face details on top of the head
         this.drawFace(ctx, player, pose);

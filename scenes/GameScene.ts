@@ -19,6 +19,7 @@ import { InputState, Vector2 } from '../types';
 import { TouchControlsUI } from '../ui/TouchControlsUI';
 import { SettingsScene } from './SettingsScene';
 import { SettingsManager } from '../core/SettingsManager';
+import { getBlockType } from '../world/BlockRegistry';
 
 export class GameScene implements Scene {
   private sceneManager: SceneManager;
@@ -84,9 +85,22 @@ export class GameScene implements Scene {
 
   private onPlayerAction = (action: string, data: any) => {
     switch (action) {
-      case 'breakBlock':
-        this.itemEntities.push(new ItemEntity({x: (data.x + 0.5) * BLOCK_SIZE, y: (data.y + 0.5) * BLOCK_SIZE }, data.item));
+      case 'breakBlock': {
+        const itemEntity = new ItemEntity(
+          { x: (data.x + 0.5) * BLOCK_SIZE, y: (data.y + 0.5) * BLOCK_SIZE },
+          data.item
+        );
+        // Random pop-out direction
+        itemEntity.velocity.x = (Math.random() - 0.5) * 5;
+        itemEntity.velocity.y = -Math.random() * 5 - 3; // Upward
+        this.itemEntities.push(itemEntity);
+
+        if (data.blockType.xpDrop) {
+            const xp = data.blockType.xpDrop.min + Math.random() * (data.blockType.xpDrop.max - data.blockType.xpDrop.min);
+            this.player.xpSystem.spawnXP({ x: (data.x + 0.5) * BLOCK_SIZE, y: (data.y + 0.5) * BLOCK_SIZE }, xp);
+        }
         break;
+      }
       case 'openInventory':
         this.inventoryUI.openPlayerInventory();
         break;

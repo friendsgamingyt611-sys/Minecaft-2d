@@ -93,6 +93,7 @@ export interface BlockType {
   itemDrop?: { itemId: ItemId; min: number; max: number; };
   toolType?: ToolType;
   minToolTier?: ToolTier;
+  xpDrop?: { min: number; max: number; };
 }
 
 export interface GameStateOptions {
@@ -179,4 +180,12 @@ export interface InputState {
     destroy: boolean; // left-click or destroy button (is down)
     inventory: boolean; // 'e' or inventory button (is pressed)
     drop: boolean; // 'q' or drop button (is pressed)
+}
+
+export interface XPOrb {
+  position: Vector2;
+  velocity: Vector2;
+  value: number; // XP points
+  lifetime: number;
+  collected: boolean;
 }

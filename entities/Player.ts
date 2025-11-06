@@ -17,6 +17,7 @@ import { CraftingSystem } from '../crafting/CraftingSystem';
 import { MouseHandler } from '../input/MouseHandler';
 import { SettingsManager } from '../core/SettingsManager';
 import { TouchHandler } from '../input/TouchHandler';
+import { XPSystem } from '../world/XPSystem';
 
 export class Player {
   public position: Vector2;
@@ -51,6 +52,7 @@ export class Player {
   public isMining: boolean = false;
   public breakingBlock: { x: number, y: number, progress: number } | null = null;
   public targetBlock: {x: number, y: number} | null = null;
+  public placementAnimTimer: number = 0;
   
   private actionCallback: (action: string, data: any) => void;
 
@@ -72,6 +74,11 @@ export class Player {
   private blinkDurationTimer: number = 0;
   private readonly BLINK_DURATION = 0.15; // 150ms
 
+  // XP System
+  public experience: number = 0;
+  public level: number = 0;
+  public xpSystem: XPSystem;
+
   constructor(spawnPoint: Vector2, world: ChunkSystem, mouseHandler: MouseHandler, touchHandler: TouchHandler, physics: PhysicsSystem, actionCallback: (action: string, data: any) => void) {
     this.position = { ...spawnPoint };
     this.spawnPoint = { ...spawnPoint };
@@ -82,6 +89,7 @@ export class Player {
     this.inventory = new Inventory(INVENTORY_SLOTS);
     this.armorInventory = new Inventory(4);
     this.actionCallback = actionCallback;
+    this.xpSystem = new XPSystem();
     this.initializeInventory();
   }
 
@@ -96,6 +104,10 @@ export class Player {
 
   update(deltaTime: number, camera: Camera, inputState: InputState): void {
     if (this.isDead) return;
+
+    if (this.placementAnimTimer > 0) {
+      this.placementAnimTimer -= deltaTime;
+    }
 
     this.updateTargeting(camera);
     this.handleInput(inputState);
@@ -117,8 +129,33 @@ export class Player {
     this.updateAnimationState(inputState);
     this.updateBlinking(deltaTime);
     this.updateEyeAndHeadDirection();
+
+    const collectedXP = this.xpSystem.update(deltaTime, {x: this.position.x + this.width / 2, y: this.position.y + this.height / 2});
+    if(collectedXP > 0) {
+        this.addXP(collectedXP);
+    }
   }
   
+  public addXP(amount: number): void {
+    if (this.gamemode !== 'survival') return;
+    this.experience += amount;
+    
+    let requiredXP = this.getRequiredXPForLevel(this.level);
+    
+    while (this.experience >= requiredXP) {
+      this.level++;
+      this.experience -= requiredXP;
+      // TODO: Play level-up sound/effect here
+      requiredXP = this.getRequiredXPForLevel(this.level);
+    }
+  }
+
+  public getRequiredXPForLevel(level: number): number {
+    if (level < 16) return 2 * level + 7;
+    if (level < 31) return 5 * level - 38;
+    return 9 * level - 158;
+  }
+
   private updateEyeAndHeadDirection(): void {
     let targetEyeX = 0;
     let targetEyeY = 0;
@@ -396,7 +433,7 @@ export class Player {
         this.world.setBlock(blockX, blockY, BlockId.AIR);
         if (drop && this.gamemode === 'survival') {
           const count = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
-          this.actionCallback('breakBlock', { x: blockX, y: blockY, item: { id: drop.itemId, count } });
+          this.actionCallback('breakBlock', { x: blockX, y: blockY, item: { id: drop.itemId, count }, blockType });
         }
         this.breakingBlock = null;
         this.isMining = false;
@@ -470,6 +507,7 @@ export class Player {
               if(!this.physics.checkAABBCollision(playerRect, newBlockRect)) {
                 this.world.setBlock(placeX, placeY, itemInfo.blockId);
                 if (this.gamemode === 'survival') this.inventory.removeItem(this.activeHotbarSlot, 1);
+                this.placementAnimTimer = 0.3; // 300ms animation
               }
           }
         }

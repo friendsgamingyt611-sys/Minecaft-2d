@@ -1,4 +1,4 @@
-import { Vector2, Item } from '../types';
+import { Vector2, Item, ItemId } from '../types';
 import { PhysicsSystem } from './PhysicsSystem';
 import { BLOCK_SIZE } from '../core/Constants';
 import { BlockRenderer } from '../rendering/BlockRenderer';
@@ -16,6 +16,10 @@ export class ItemEntity {
     private pickupDelay: number = 30; // 0.5 seconds
     private collected: boolean = false;
 
+    private bobTimer: number = 0;
+    private rotationAngle: number = 0;
+    private glowPulse: number = 0;
+
     constructor(position: Vector2, item: Item) {
         this.position = { 
             x: position.x - this.width / 2,
@@ -32,10 +36,17 @@ export class ItemEntity {
             this.pickupDelay -= deltaTime * 60;
         }
 
+        // Bobbing animation
+        this.bobTimer += deltaTime * 4;
+        
+        // Rotation animation
+        this.rotationAngle += deltaTime * 2;
+        
+        // Glow pulse for rare items
+        this.glowPulse = Math.sin(this.bobTimer * 2) * 0.5 + 0.5;
+
         physics.applyGravity(this);
         this.velocity.x *= 0.95; // Air/ground friction
-        // FIX: Replaced calls to non-existent 'updatePosition' and 'checkCollision'
-        // with a single call to 'updatePositionAndCollision', which handles both.
         physics.updatePositionAndCollision(this);
     }
     
@@ -53,20 +64,30 @@ export class ItemEntity {
 
     public render(ctx: CanvasRenderingContext2D, blockRenderer: BlockRenderer): void {
         const itemInfo = CraftingSystem.getItemInfo(this.item.id);
-        if (itemInfo && itemInfo.blockId) {
-            const bob = Math.sin(Date.now() / 200) * 2;
-            const x = this.position.x;
-            const y = this.position.y + bob;
-            
-            ctx.save();
-            ctx.translate(x + this.width / 2, y + this.height / 2);
-            ctx.scale(0.5, 0.5);
-            ctx.rotate(Date.now() / 500);
-            ctx.translate(-BLOCK_SIZE / 2, -BLOCK_SIZE / 2);
-            
-            blockRenderer.render(ctx, itemInfo.blockId, 0, 0);
-            
-            ctx.restore();
+        if (!itemInfo || !itemInfo.blockId) return;
+        
+        // Calculate bob offset
+        const bob = Math.sin(this.bobTimer) * 4;
+        const x = this.position.x;
+        const y = this.position.y + bob;
+        
+        ctx.save();
+        
+        // Glow effect for rare items (diamonds, etc.)
+        if (this.item.id === ItemId.DIAMOND) {
+          ctx.shadowColor = '#68ded1';
+          ctx.shadowBlur = 20 * this.glowPulse;
         }
+        
+        // Center and rotate
+        ctx.translate(x + this.width / 2, y + this.height / 2);
+        ctx.rotate(this.rotationAngle);
+        ctx.scale(0.5, 0.5); // Smaller than block size
+        ctx.translate(-BLOCK_SIZE / 2, -BLOCK_SIZE / 2);
+        
+        // Render the block/item
+        blockRenderer.render(ctx, itemInfo.blockId, 0, 0);
+        
+        ctx.restore();
     }
 }

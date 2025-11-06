@@ -25,74 +25,76 @@ function createOreTexture(baseColor: string, oreColor: string): (ctx: CanvasRend
 }
 
 function createDetailTexture(baseColor: string, detailColors: string[]): (ctx: CanvasRenderingContext2D, x: number, y: number, size: number) => void {
-    return (ctx, x, y, size) => {
-        ctx.fillStyle = baseColor;
-        ctx.fillRect(x, y, size, size);
-
-        let seed = x * 13 + y * 37;
-        const random = () => {
-            const a = 1103515245;
-            const c = 12345;
-            const m = Math.pow(2, 31);
-            seed = (a * seed + c) % m;
-            return seed / m;
-        };
-
-        for(let i = 0; i < size * 1.5; i++) {
-            const px = x + random() * size;
-            const py = y + random() * size;
-            ctx.fillStyle = detailColors[Math.floor(random() * detailColors.length)];
-            ctx.fillRect(px, py, 2, 2);
-        }
-    };
+  return (ctx, x, y, size) => {
+    // Base color
+    ctx.fillStyle = baseColor;
+    ctx.fillRect(x, y, size, size);
+    
+    // Add random detail pixels (like Minecraft's dithered texture)
+    for (let i = 0; i < size * 1.5; i++) {
+      const px = x + Math.random() * size;
+      const py = y + Math.random() * size;
+      ctx.fillStyle = detailColors[Math.floor(Math.random() * detailColors.length)];
+      ctx.fillRect(px, py, 2, 2); // 2x2 detail pixels
+    }
+    
+    // Subtle gradient for depth
+    const gradient = ctx.createRadialGradient(
+      x + size/2, y + size/2, 0,
+      x + size/2, y + size/2, size/2
+    );
+    gradient.addColorStop(0, 'rgba(255,255,255,0.05)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0.1)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x, y, size, size);
+  };
 }
+
 
 function createCobblestoneTexture(): (ctx: CanvasRenderingContext2D, x: number, y: number, size: number) => void {
-    return (ctx, x, y, size) => {
-        // Grout color
-        ctx.fillStyle = '#5a5a5a';
-        ctx.fillRect(x, y, size, size);
-
-        let seed = x * 13 + y * 37;
-        const random = () => {
-            const a = 1103515245;
-            const c = 12345;
-            const m = Math.pow(2, 31);
-            seed = (a * seed + c) % m;
-            return seed / m;
-        };
-        
-        const stoneColors = ['#808080', '#898989', '#7a7a7a', '#838383'];
-        const offsets = [
-            { dx: 0, dy: 0, w: 0.6, h: 0.6 },
-            { dx: 0.5, dy: 0, w: 0.5, h: 0.5 },
-            { dx: 0, dy: 0.5, w: 0.5, h: 0.5 },
-            { dx: 0.6, dy: 0.4, w: 0.4, h: 0.6 },
-        ];
-
-        ctx.strokeStyle = '#454545';
-        ctx.lineWidth = 2;
-
-        for (const offset of offsets) {
-            ctx.fillStyle = stoneColors[Math.floor(random() * stoneColors.length)];
-            const stoneX = x + offset.dx * size + (random() - 0.5) * 4;
-            const stoneY = y + offset.dy * size + (random() - 0.5) * 4;
-            const stoneW = offset.w * size;
-            const stoneH = offset.h * size;
-            
-            ctx.beginPath();
-            ctx.roundRect(stoneX, stoneY, stoneW, stoneH, size / 8);
-            ctx.fill();
-            ctx.stroke();
-
-            // Add a simple highlight
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-            ctx.beginPath();
-            ctx.roundRect(stoneX + 2, stoneY + 2, stoneW - 4, stoneH - 4, size / 9);
-            ctx.fill();
-        }
+  return (ctx, x, y, size) => {
+    // Mortar/grout background
+    ctx.fillStyle = '#5a5a5a';
+    ctx.fillRect(x, y, size, size);
+    
+    // Generate 4-6 irregularly shaped stones
+    const stoneColors = ['#808080', '#898989', '#7a7a7a', '#838383'];
+    const stones = [
+      { dx: 0, dy: 0, w: 0.6, h: 0.6 },
+      { dx: 0.5, dy: 0, w: 0.5, h: 0.5 },
+      { dx: 0, dy: 0.5, w: 0.5, h: 0.5 },
+      { dx: 0.6, dy: 0.4, w: 0.4, h: 0.6 },
+    ];
+    
+    for (const stone of stones) {
+      // Random stone color
+      ctx.fillStyle = stoneColors[Math.floor(Math.random() * stoneColors.length)];
+      
+      // Position with slight randomness
+      const stoneX = x + stone.dx * size + (Math.random() - 0.5) * 4;
+      const stoneY = y + stone.dy * size + (Math.random() - 0.5) * 4;
+      const stoneW = stone.w * size;
+      const stoneH = stone.h * size;
+      
+      // Draw irregular rounded rectangle
+      ctx.beginPath();
+      ctx.roundRect(stoneX, stoneY, stoneW, stoneH, size / 8);
+      ctx.fill();
+      
+      // Stone edge highlight
+      ctx.strokeStyle = '#454545';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Top-left highlight for depth
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.beginPath();
+      ctx.roundRect(stoneX + 2, stoneY + 2, stoneW - 4, stoneH - 4, size / 9);
+      ctx.fill();
     }
+  };
 }
+
 
 function createLogTexture(innerColor: string, barkColor: string): (ctx: CanvasRenderingContext2D, x: number, y: number, size: number) => void {
     return (ctx, x, y, size) => {
@@ -116,20 +118,46 @@ function createLogTexture(innerColor: string, barkColor: string): (ctx: CanvasRe
 }
 
 function createPlanksTexture(baseColor: string, grainColor: string): (ctx: CanvasRenderingContext2D, x: number, y: number, size: number) => void {
-    return (ctx, x, y, size) => {
-        ctx.fillStyle = baseColor;
-        ctx.fillRect(x, y, size, size);
-        ctx.strokeStyle = grainColor;
-        ctx.lineWidth = 2;
-        for (let i = 1; i < 4; i++) {
-            const yPos = y + (size / 4) * i;
-            ctx.beginPath();
-            ctx.moveTo(x, yPos);
-            ctx.lineTo(x + size, yPos);
-            ctx.stroke();
-        }
+  return (ctx, x, y, size) => {
+    // Base wood color
+    ctx.fillStyle = baseColor;
+    ctx.fillRect(x, y, size, size);
+    
+    // Individual plank boards (4 horizontal planks per block)
+    ctx.strokeStyle = grainColor;
+    ctx.lineWidth = 2;
+    for (let i = 1; i < 4; i++) {
+      const yPos = y + (size / 4) * i;
+      ctx.beginPath();
+      ctx.moveTo(x, yPos);
+      ctx.lineTo(x + size, yPos);
+      ctx.stroke();
     }
+    
+    // Wood grain lines (vertical, slightly wavy)
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = `${grainColor}44`; // Semi-transparent
+    for (let plank = 0; plank < 4; plank++) {
+      const grainCount = 2 + Math.floor(Math.random() * 3);
+      for (let g = 0; g < grainCount; g++) {
+        const grainX = x + Math.random() * size;
+        const plankY = y + (size / 4) * plank;
+        ctx.beginPath();
+        ctx.moveTo(grainX, plankY);
+        ctx.lineTo(grainX + Math.random() * 4 - 2, plankY + size / 4);
+        ctx.stroke();
+      }
+    }
+    
+    // Subtle shading for depth
+    const gradient = ctx.createLinearGradient(x, y, x, y + size);
+    gradient.addColorStop(0, 'rgba(255,255,255,0.1)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0.1)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x, y, size, size);
+  };
 }
+
 
 
 const BLOCK_TYPES: BlockType[] = [
@@ -149,20 +177,20 @@ const BLOCK_TYPES: BlockType[] = [
   // OAK
   { id: BlockId.OAK_LOG, name: 'Oak Log', color: '#69512b', isSolid: true, hardness: 90, toolType: 'axe', itemDrop: { itemId: ItemId.OAK_LOG, min:1, max:1}, texture: createLogTexture('#a1885c', '#5a4524')},
   { id: BlockId.OAK_PLANKS, name: 'Oak Planks', color: '#af8f5b', isSolid: true, hardness: 48, toolType: 'axe', itemDrop: { itemId: ItemId.OAK_PLANKS, min:1, max:1}, texture: createPlanksTexture('#af8f5b', 'rgba(0,0,0,0.1)')},
-  { id: BlockId.OAK_LEAVES, name: 'Oak Leaves', color: '#2a752e', isSolid: true, hardness: 12, itemDrop: { itemId: ItemId.OAK_LEAVES, min:1, max:1}, texture: createDetailTexture('#2a752e', ['#256929', '#388a3d'])},
+  { id: BlockId.OAK_LEAVES, name: 'Oak Leaves', color: '#2a752e', isSolid: true, hardness: 12, toolType: 'none', itemDrop: { itemId: ItemId.OAK_LEAVES, min:1, max:1}, texture: createDetailTexture('#2a752e', ['#256929', '#388a3d'])},
   // SPRUCE
   { id: BlockId.SPRUCE_LOG, name: 'Spruce Log', color: '#4a331a', isSolid: true, hardness: 90, toolType: 'axe', itemDrop: { itemId: ItemId.SPRUCE_LOG, min:1, max:1}, texture: createLogTexture('#694b2a', '#4a331a')},
   { id: BlockId.SPRUCE_PLANKS, name: 'Spruce Planks', color: '#694b2a', isSolid: true, hardness: 48, toolType: 'axe', itemDrop: { itemId: ItemId.SPRUCE_PLANKS, min:1, max:1}, texture: createPlanksTexture('#694b2a', 'rgba(0,0,0,0.15)')},
-  { id: BlockId.SPRUCE_LEAVES, name: 'Spruce Leaves', color: '#3a5a3a', isSolid: true, hardness: 12, itemDrop: { itemId: ItemId.SPRUCE_LEAVES, min:1, max:1}, texture: createDetailTexture('#3a5a3a', ['#334f33', '#466b46'])},
+  { id: BlockId.SPRUCE_LEAVES, name: 'Spruce Leaves', color: '#3a5a3a', isSolid: true, hardness: 12, toolType: 'none', itemDrop: { itemId: ItemId.SPRUCE_LEAVES, min:1, max:1}, texture: createDetailTexture('#3a5a3a', ['#334f33', '#466b46'])},
   // BIRCH
   { id: BlockId.BIRCH_LOG, name: 'Birch Log', color: '#e8e8e8', isSolid: true, hardness: 90, toolType: 'axe', itemDrop: { itemId: ItemId.BIRCH_LOG, min:1, max:1}, texture: createLogTexture('#e0d6b4', '#e8e8e8')},
   { id: BlockId.BIRCH_PLANKS, name: 'Birch Planks', color: '#d8c28b', isSolid: true, hardness: 48, toolType: 'axe', itemDrop: { itemId: ItemId.BIRCH_PLANKS, min:1, max:1}, texture: createPlanksTexture('#d8c28b', 'rgba(0,0,0,0.05)')},
-  { id: BlockId.BIRCH_LEAVES, name: 'Birch Leaves', color: '#68a068', isSolid: true, hardness: 12, itemDrop: { itemId: ItemId.BIRCH_LEAVES, min:1, max:1}, texture: createDetailTexture('#68a068', ['#5e915e', '#79b379'])},
+  { id: BlockId.BIRCH_LEAVES, name: 'Birch Leaves', color: '#68a068', isSolid: true, hardness: 12, toolType: 'none', itemDrop: { itemId: ItemId.BIRCH_LEAVES, min:1, max:1}, texture: createDetailTexture('#68a068', ['#5e915e', '#79b379'])},
   
   // Ores
-  { id: BlockId.COAL_ORE, name: 'Coal Ore', color: '#303030', isSolid: true, hardness: 180, toolType: 'pickaxe', minToolTier: 'wood', itemDrop: { itemId: ItemId.COAL, min:1, max:1}, texture: createOreTexture('#808080', '#303030') },
+  { id: BlockId.COAL_ORE, name: 'Coal Ore', color: '#303030', isSolid: true, hardness: 180, toolType: 'pickaxe', minToolTier: 'wood', itemDrop: { itemId: ItemId.COAL, min:1, max:1}, xpDrop: { min: 0, max: 2 }, texture: createOreTexture('#808080', '#303030') },
   { id: BlockId.IRON_ORE, name: 'Iron Ore', color: '#d8a077', isSolid: true, hardness: 180, toolType: 'pickaxe', minToolTier: 'stone', itemDrop: { itemId: ItemId.IRON_ORE, min:1, max:1}, texture: createOreTexture('#808080', '#d8a077') },
-  { id: BlockId.DIAMOND_ORE, name: 'Diamond Ore', color: '#68ded1', isSolid: true, hardness: 180, toolType: 'pickaxe', minToolTier: 'iron', itemDrop: { itemId: ItemId.DIAMOND, min:1, max:1}, texture: createOreTexture('#808080', '#68ded1') },
+  { id: BlockId.DIAMOND_ORE, name: 'Diamond Ore', color: '#68ded1', isSolid: true, hardness: 300, toolType: 'pickaxe', minToolTier: 'iron', itemDrop: { itemId: ItemId.DIAMOND, min:1, max:1}, xpDrop: { min: 3, max: 7 }, texture: createOreTexture('#808080', '#68ded1') },
 
   // Utility Blocks
   { id: BlockId.CRAFTING_TABLE, name: 'Crafting Table', color: '#a0774a', isSolid: true, hardness: 45, toolType: 'axe', itemDrop: { itemId: ItemId.CRAFTING_TABLE, min:1, max:1}},

@@ -84,6 +84,8 @@ export class RenderEngine {
     
     itemEntities.forEach(entity => entity.render(ctx, this.blockRenderer));
     
+    player.xpSystem.render(ctx);
+
     this.playerRenderer.render(ctx, player, animationSystem.getPose(player));
     
     this.renderParticles(ctx, player);

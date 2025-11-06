@@ -27,7 +27,9 @@ export class AnimationSystem {
 
     public getPose(player: Player): PlayerPose {
         let pose: PlayerPose;
-        if (this.landingTimer > 0) {
+        if (player.placementAnimTimer > 0) {
+            pose = this.createPlacementPose(player);
+        } else if (this.landingTimer > 0) {
             pose = this.createLandingPose(player, this.landingTimer / this.LANDING_DURATION);
         } else {
             pose = this.getAnimationStatePose(player);
@@ -65,10 +67,11 @@ export class AnimationSystem {
         }
     }
 
-    private createDefaultPose(player?: Player): PlayerPose {
+    private createDefaultPose(player: Player): PlayerPose {
         const skin = player?.skinColor || '#c58c6b';
         const shirt = player?.shirtColor || '#4ca7a7';
         const pants = player?.pantsColor || '#3a3a99';
+        const facingDirection = player.facingDirection;
         
         const headSize = 8 / 16 * BLOCK_SIZE;
         const torsoHeight = 12 / 16 * BLOCK_SIZE;
@@ -81,14 +84,13 @@ export class AnimationSystem {
         
         const torsoBaseY = playerHeight - legHeight;
         
-        // The default pose has the player's left limbs (closer to the camera when facing right) in front.
         return {
             head: { x: 0, y: torsoBaseY - torsoHeight - headSize / 2, width: headSize, height: headSize, rotation: 0, color: skin, z: 2 },
             torso: { x: 0, y: torsoBaseY - torsoHeight / 2, width: torsoWidth, height: torsoHeight, rotation: 0, color: shirt, z: 1 },
-            leftArm: { x: -torsoWidth/2 - armWidth/2, y: torsoBaseY - torsoHeight + armHeight/2, width: armWidth, height: armHeight, rotation: 0, color: skin, z: 2 },
-            rightArm: { x: torsoWidth/2 + armWidth/2, y: torsoBaseY - torsoHeight + armHeight/2, width: armWidth, height: armHeight, rotation: 0, color: skin, z: 0 },
-            leftLeg: { x: -torsoWidth/4, y: playerHeight - legHeight/2, width: legWidth, height: legHeight, rotation: 0, color: pants, z: 2 },
-            rightLeg: { x: torsoWidth/4, y: playerHeight - legHeight/2, width: legWidth, height: legHeight, rotation: 0, color: pants, z: 0 },
+            leftArm: { x: -torsoWidth/2 - armWidth/2, y: torsoBaseY - torsoHeight + armHeight/2, width: armWidth, height: armHeight, rotation: 0, color: skin, z: facingDirection === 1 ? 2 : 0 },
+            rightArm: { x: torsoWidth/2 + armWidth/2, y: torsoBaseY - torsoHeight + armHeight/2, width: armWidth, height: armHeight, rotation: 0, color: skin, z: facingDirection === 1 ? 0 : 2 },
+            leftLeg: { x: -torsoWidth/4, y: playerHeight - legHeight/2, width: legWidth, height: legHeight, rotation: 0, color: pants, z: facingDirection === 1 ? 2 : 0 },
+            rightLeg: { x: torsoWidth/4, y: playerHeight - legHeight/2, width: legWidth, height: legHeight, rotation: 0, color: pants, z: facingDirection === 1 ? 0 : 2 },
             eyeOffset: player?.eyeOffset || { x: 0, y: 0 },
         };
     }
@@ -147,7 +149,6 @@ export class AnimationSystem {
 
         const torso = pose.torso;
 
-        // The animation angles are always for a right-facing walk cycle.
         const rightLegAngle = swingAngle;
         const leftLegAngle = -swingAngle;
         const rightArmAngle = -swingAngle;
@@ -211,20 +212,60 @@ export class AnimationSystem {
     }
 
     private createMiningPose(player: Player): PlayerPose {
+      const pose = this.createDefaultPose(player);
+      
+      const swingProgress = (this.mineSwingTimer % 0.6) / 0.6;
+      const swingAngle = Math.sin(swingProgress * Math.PI) * 1.8;
+      
+      pose.torso.rotation = swingAngle * 0.15;
+      
+      const torso = pose.torso;
+      
+      const miningArm = player.facingDirection === 1 ? pose.rightArm : pose.leftArm;
+      this.positionLimb(miningArm, torso, 
+        { x: torso.width / 2 * (player.facingDirection === 1 ? 1 : -1), y: -torso.height / 2 }, 
+        swingAngle - 0.3
+      );
+      
+      const supportArm = player.facingDirection === 1 ? pose.leftArm : pose.rightArm;
+      this.positionLimb(supportArm, torso,
+        { x: -torso.width / 2 * (player.facingDirection === 1 ? 1 : -1), y: -torso.height / 2 },
+        0.3 + swingAngle * 0.1
+      );
+      
+      this.positionLimb(pose.rightLeg, torso, 
+        { x: torso.width / 4, y: torso.height / 2 }, 
+        swingAngle * 0.1
+      );
+      this.positionLimb(pose.leftLeg, torso, 
+        { x: -torso.width / 4, y: torso.height / 2 }, 
+        -swingAngle * 0.1
+      );
+      
+      return pose;
+    }
+    
+    private createPlacementPose(player: Player): PlayerPose {
         const pose = this.createDefaultPose(player);
-        const swingProgress = (this.mineSwingTimer % 0.5) / 0.5;
-        const swingAngle = Math.sin(swingProgress * Math.PI) * 1.5;
+        const progress = player.placementAnimTimer / 0.3;
+        const reach = Math.sin(progress * Math.PI); // Smooth out-and-in motion
 
-        pose.torso.rotation = swingAngle * 0.1;
-
+        const frontArm = player.facingDirection === 1 ? pose.rightArm : pose.leftArm;
+        const backArm = player.facingDirection === 1 ? pose.leftArm : pose.rightArm;
+        
         const torso = pose.torso;
-        this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, swingAngle);
-        this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, 0.2); // Bracing arm
-        this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, 0);
-        this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, 0);
 
+        this.positionLimb(frontArm, torso, 
+          { x: torso.width / 2 * (player.facingDirection === 1 ? 1 : -1), y: -torso.height / 2 }, 
+          -1.0 * reach // Reach forward
+        );
+        this.positionLimb(backArm, torso, { x: -torso.width / 2 * (player.facingDirection === 1 ? 1 : -1), y: -torso.height/2}, 0);
+        this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height/2}, 0);
+        this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height/2}, 0);
+        
         return pose;
     }
+
 
     private createSneakingPose(player: Player): PlayerPose {
         const pose = this.createDefaultPose(player);
