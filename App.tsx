@@ -9,7 +9,7 @@ const App: React.FC = () => {
     if (canvasRef.current) {
       const canvas = canvasRef.current;
       // Adjust canvas size to fit window while maintaining aspect ratio
-      const aspectRatio = 16 / 9;
+      const aspectRatio = 16 / 9; // New 16:9 aspect ratio
       const resizeCanvas = () => {
         const { innerWidth, innerHeight } = window;
         let width = innerWidth;
@@ -20,8 +20,8 @@ const App: React.FC = () => {
           width = innerHeight * aspectRatio;
         }
         
-        canvas.width = 960; // Game resolution (from 1280)
-        canvas.height = 540; // (from 720)
+        canvas.width = 1280; // New Game resolution: 20 blocks * 64px
+        canvas.height = 720; // New Game resolution: 11.25 blocks * 64px
         canvas.style.width = `${width}px`;
         canvas.style.height = `${height}px`;
       };

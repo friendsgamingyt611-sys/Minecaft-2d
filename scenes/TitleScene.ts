@@ -7,7 +7,7 @@ export class TitleScene implements Scene {
   private sceneManager: SceneManager;
   private buttons: { label: string; x: number; y: number; width: number; height: number; action: () => void }[] = [];
   private title = "Minecraft 2D";
-  private splashText = "Looks familiar!";
+  private splashText = "Lighting & Physics!";
   private hoveredButton: any = null;
   private cloudOffset: number = 0;
   
@@ -20,10 +20,10 @@ export class TitleScene implements Scene {
     const canvasWidth = canvas.width;
     const canvasHeight = canvas.height;
     
-    const buttonWidth = 300;
-    const buttonHeight = 50;
-    const spacing = 20;
-    const startY = canvasHeight / 2 - 20;
+    const buttonWidth = 400;
+    const buttonHeight = 60;
+    const spacing = 25;
+    const startY = canvasHeight / 2;
     
     this.buttons = [
         {
@@ -94,9 +94,9 @@ export class TitleScene implements Scene {
           ctx.fillRect(x, y, size, size/3);
           ctx.fillRect(x - size/4, y + size/6, size*1.5, size/2);
       }
-      drawCloud(this.cloudOffset, 100, 150);
-      drawCloud(this.cloudOffset - 400, 150, 120);
-      drawCloud(this.cloudOffset + 300, 80, 180);
+      drawCloud(this.cloudOffset, 150, 200);
+      drawCloud(this.cloudOffset - 500, 200, 160);
+      drawCloud(this.cloudOffset + 400, 120, 240);
   }
 
   render(ctx: CanvasRenderingContext2D): void {
@@ -121,29 +121,29 @@ export class TitleScene implements Scene {
 
 
     // Title
-    ctx.font = "80px Minecraftia";
+    ctx.font = "100px Minecraftia";
     ctx.textAlign = 'center';
-    ctx.lineWidth = 8;
+    ctx.lineWidth = 10;
     // 3D effect
     ctx.fillStyle = '#3e3e3e';
-    ctx.fillText(this.title, canvasWidth / 2 + 5, 205);
+    ctx.fillText(this.title, canvasWidth / 2 + 6, 256);
     // Main Title Text
-    const gradient = ctx.createLinearGradient(0, 120, 0, 200);
+    const gradient = ctx.createLinearGradient(0, 150, 0, 250);
     gradient.addColorStop(0, '#d8d8d8');
     gradient.addColorStop(1, '#a0a0a0');
     ctx.fillStyle = gradient;
     ctx.strokeStyle = '#383838';
-    ctx.strokeText(this.title, canvasWidth / 2, 200);
-    ctx.fillText(this.title, canvasWidth / 2, 200);
+    ctx.strokeText(this.title, canvasWidth / 2, 250);
+    ctx.fillText(this.title, canvasWidth / 2, 250);
 
     // Splash Text
     ctx.save();
-    ctx.translate(canvasWidth / 2 + 200, 220);
+    ctx.translate(canvasWidth / 2 + 250, 280);
     ctx.rotate(0.3);
-    ctx.font = "30px Minecraftia";
+    ctx.font = "40px Minecraftia";
     ctx.fillStyle = '#ffff00';
     ctx.strokeStyle = '#383838';
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 5;
     ctx.strokeText(this.splashText, 0, 0);
     ctx.fillText(this.splashText, 0, 0);
     ctx.restore();
@@ -162,7 +162,7 @@ export class TitleScene implements Scene {
         ctx.fillRect(button.x + inset, button.y + inset, button.width - inset * 2, button.height - inset * 2);
 
         // Text
-        ctx.font = "30px Minecraftia";
+        ctx.font = "36px Minecraftia";
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -175,9 +175,9 @@ export class TitleScene implements Scene {
     });
 
     // Version info
-    ctx.font = "18px Minecraftia";
+    ctx.font = "20px Minecraftia";
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'left';
-    ctx.fillText("Minecraft 2D v2.5.1", 10, canvasHeight - 10);
+    ctx.fillText("Minecraft 2D v3.0", 10, canvasHeight - 10);
   }
 }

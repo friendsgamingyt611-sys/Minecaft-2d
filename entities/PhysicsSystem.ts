@@ -1,7 +1,7 @@
+
 import { Player } from './Player';
 import { ChunkSystem } from '../world/ChunkSystem';
-import { GRAVITY, PLAYER_FRICTION, BLOCK_SIZE, TERMINAL_VELOCITY, PLAYER_STEP_UP_FORCE } from '../core/Constants';
-import { BlockId, Vector2 } from '../types';
+import { GRAVITY, PLAYER_FRICTION, BLOCK_SIZE, TERMINAL_VELOCITY } from '../core/Constants';
 import { getBlockType } from '../world/BlockRegistry';
 import { ItemEntity } from './ItemEntity';
 
@@ -46,7 +46,6 @@ export class PhysicsSystem {
         (entity as Player).justLanded = !(entity as Player).onGround && onGround;
         (entity as Player).onGround = onGround;
       } else {
-        // FIX: Also set onGround status for ItemEntity.
         (entity as ItemEntity).onGround = onGround;
       }
   }
@@ -106,44 +105,45 @@ export class PhysicsSystem {
             const blockRect = { x: x * BLOCK_SIZE, y: y * BLOCK_SIZE, width: BLOCK_SIZE, height: BLOCK_SIZE };
             if (!this.checkAABBCollision(entityBounds, blockRect)) continue;
 
-            // Try to step up if it's a player
-            if (isPlayer && entity.velocity.y >= 0 && this.tryStepUp(entity as Player, x, y)) {
-                return; // Stepped up, no need to resolve collision
+            // Player-specific step-up logic
+            if (isPlayer) {
+                const player = entity as Player;
+                const playerBottom = player.position.y + player.height;
+                const blockTop = blockRect.y;
+
+                // Check if it's a short obstacle at the player's feet while they are on the ground.
+                if (player.onGround && (playerBottom > blockTop) && (playerBottom < blockTop + BLOCK_SIZE + 1)) {
+                    // Check for clearance above the step.
+                    const blockAbove = getBlockType(this.world.getBlock(x, y - 1));
+                    const blockHeadroom = getBlockType(this.world.getBlock(x, y - 2));
+
+                    if ((!blockAbove || !blockAbove.isSolid) && (!blockHeadroom || !blockHeadroom.isSolid)) {
+                        // Perform step-up by teleporting.
+                        player.position.y = blockRect.y - player.height;
+                        // Nudge player slightly forward to prevent re-collision
+                        player.position.x += player.velocity.x > 0 ? 1 : -1; 
+                        // Update bounds for subsequent checks and skip normal resolution for this block
+                        entityBounds.x = player.position.x;
+                        entityBounds.y = player.position.y;
+                        continue; 
+                    }
+                }
             }
 
-            if (entity.velocity.x > 0) { // Moving right
+            // Standard collision resolution if not stepping up.
+            // This is now position-based to prevent getting stuck when velocity.x is 0.
+            const entityCenterX = entityBounds.x + entityBounds.width / 2;
+            const blockCenterX = blockRect.x + blockRect.width / 2;
+            
+            if (entityCenterX < blockCenterX) { // Player is left of block center, push left.
                 entity.position.x = blockRect.x - entity.width;
-                entity.velocity.x = 0;
-            } else if (entity.velocity.x < 0) { // Moving left
+            } else { // Player is right of block center, push right.
                 entity.position.x = blockRect.x + blockRect.width;
-                entity.velocity.x = 0;
             }
+            entity.velocity.x = 0;
+            // Update bounds for next iteration in this frame's collision checks.
+            entityBounds.x = entity.position.x;
         }
     }
-  }
-
-  private tryStepUp(player: Player, collisionX: number, collisionY: number): boolean {
-    // Check if the collision is near the player's feet
-    const playerBottom = player.position.y + player.height;
-    const isFootCollision = collisionY * BLOCK_SIZE > playerBottom - BLOCK_SIZE - 1;
-
-    if (!isFootCollision) return false;
-
-    // Check if there's space above the block to step onto
-    const blockAbove = this.world.getBlock(collisionX, collisionY - 1);
-    const blockTypeAbove = getBlockType(blockAbove);
-    if (blockTypeAbove && blockTypeAbove.isSolid) return false;
-
-    // Check for headroom
-    const blockHeadroom = this.world.getBlock(collisionX, collisionY - 2);
-    const blockTypeHeadroom = getBlockType(blockHeadroom);
-    if (blockTypeHeadroom && blockTypeHeadroom.isSolid) return false;
-    
-    // Perform step up with a small hop instead of teleporting
-    player.velocity.y = -PLAYER_STEP_UP_FORCE;
-    // Give a tiny horizontal nudge to clear the block corner
-    player.position.x += Math.sign(player.velocity.x || player.facingDirection) * 2;
-    
-    return true;
   }
 }

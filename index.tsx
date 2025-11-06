@@ -1,8 +1,7 @@
 import React, { ErrorInfo, ReactNode } from 'react';
-import ReactDOM from 'react-dom/client';
+import { createRoot } from 'react-dom/client';
 import App from './App';
 
-// FIX: Renamed Props and State to be more specific and avoid potential global name conflicts.
 interface ErrorBoundaryProps {
   children?: ReactNode;
 }
@@ -11,9 +10,9 @@ interface ErrorBoundaryState {
   hasError: boolean;
 }
 
-// FIX: Changed from `extends Component` to `extends React.Component` to fix a type error where `this.props` was not being recognized.
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // FIX: The "Property 'state' does not exist" error is resolved by initializing state as a class property. This is a more modern approach that also explicitly declares the `state` property on the class, satisfying stricter TypeScript compiler options. This also resolves the related error for `this.props`.
+  // FIX: Reverted to class property initialization for state.
+  // The constructor-based initialization was causing type errors where `state` and `props` were not found on the component instance.
   state: ErrorBoundaryState = { hasError: false };
 
   static getDerivedStateFromError(_: Error): ErrorBoundaryState {
@@ -53,7 +52,7 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
-const root = ReactDOM.createRoot(rootElement);
+const root = createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <ErrorBoundary>

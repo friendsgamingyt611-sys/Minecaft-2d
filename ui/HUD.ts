@@ -27,7 +27,7 @@ export class HUD {
     this.renderHotbar(ctx);
     
     if (SettingsManager.instance.getEffectiveControlScheme() === 'touch') {
-        this.touchControlsUI.render(ctx);
+        this.touchControlsUI.render(ctx, this.player);
     }
   }
 

@@ -15,7 +15,7 @@ import { PhysicsSystem } from '../entities/PhysicsSystem';
 import { BLOCK_SIZE, HOTBAR_SLOTS } from '../core/Constants';
 import { TitleScene } from './TitleScene';
 import { ControlManager } from '../core/Controls';
-import { InputState } from '../types';
+import { InputState, Vector2 } from '../types';
 import { TouchControlsUI } from '../ui/TouchControlsUI';
 import { SettingsScene } from './SettingsScene';
 import { SettingsManager } from '../core/SettingsManager';
@@ -73,188 +73,197 @@ export class GameScene implements Scene {
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
     this.pauseMenuButtons = [
-        { label: 'Resume', rect: { x: cx - 150, y: cy - 25, w: 300, h: 50 }, action: () => { this.isPaused = false; }},
-        { label: 'Settings', rect: { x: cx - 150, y: cy + 45, w: 300, h: 50 }, action: () => {
-            this.sceneManager.pushScene(new SettingsScene(this.sceneManager));
-        }},
-        { label: 'Save & Quit to Title', rect: { x: cx - 150, y: cy + 115, w: 300, h: 50 }, action: () => {
-            this.sceneManager.switchScene(new TitleScene(this.sceneManager));
-        }},
+        { label: 'Resume', rect: { x: cx - 200, y: cy - 50, w: 400, h: 50 }, action: () => this.isPaused = false },
+        { label: 'Settings', rect: { x: cx - 200, y: cy + 20, w: 400, h: 50 }, action: () => this.sceneManager.pushScene(new SettingsScene(this.sceneManager)) },
+        { label: 'Quit to Title', rect: { x: cx - 200, y: cy + 90, w: 400, h: 50 }, action: () => this.sceneManager.switchScene(new TitleScene(this.sceneManager)) },
     ];
   }
 
-  enter(): void {
-    console.log("Entering Game Scene");
+  enter(): void {}
+  exit(): void {}
+
+  private onPlayerAction = (action: string, data: any) => {
+    switch (action) {
+      case 'breakBlock':
+        this.itemEntities.push(new ItemEntity({x: (data.x + 0.5) * BLOCK_SIZE, y: (data.y + 0.5) * BLOCK_SIZE }, data.item));
+        break;
+      case 'openInventory':
+        this.inventoryUI.openPlayerInventory();
+        break;
+      case 'openCraftingTable':
+        this.inventoryUI.openCraftingTable();
+        break;
+      case 'openChest':
+        this.inventoryUI.openChest(data.chestInventory);
+        break;
+    }
+  };
+
+  private handleKeyboardHotbar() {
+      const scroll = this.sceneManager.mouseHandler.consumeScroll();
+      if (scroll !== 0) {
+          this.player.activeHotbarSlot = (this.player.activeHotbarSlot + scroll + HOTBAR_SLOTS) % HOTBAR_SLOTS;
+      }
+
+      for (let i = 1; i <= 9; i++) {
+          if (this.sceneManager.inputManager.isKeyDown(i.toString())) {
+              this.player.activeHotbarSlot = i - 1;
+          }
+      }
   }
+  
+  private handleInGamePointer(positions: Vector2[]) {
+    if (positions.length === 0) return;
 
-  exit(): void {
-    console.log("Exiting Game Scene");
-  }
-
-  private handleInGameTouch() {
-    const touches = this.sceneManager.touchHandler.justEndedTouches;
-    if (touches.length === 0) return;
-
-    for (const touch of touches) {
-        // Hotbar selection
+    for (const pos of positions) {
         for (let i = 0; i < HOTBAR_SLOTS; i++) {
             const rect = this.hud.getHotbarSlotRect(i);
-            if (touch.x > rect.x && touch.x < rect.x + rect.w && touch.y > rect.y && touch.y < rect.y + rect.h) {
+            if (pos.x >= rect.x && pos.x <= rect.x + rect.w &&
+                pos.y >= rect.y && pos.y <= rect.y + rect.h) {
                 this.player.activeHotbarSlot = i;
-                return; // one action per touch
+                return; // Consume click
             }
         }
     }
   }
-  
+
   update(deltaTime: number): void {
-    if (this.player.isDead && !this.isDead) {
-        this.isDead = true;
-    }
-
     if (this.isDead) {
-        if (this.sceneManager.mouseHandler.isLeftClicked || this.sceneManager.touchHandler.justEndedTouches.length > 0) {
-            this.isDead = false;
-            this.player.respawn();
-        }
-        return;
+      // Handle death screen logic
+      return;
     }
-
+    
     if (this.sceneManager.inputManager.isKeyPressed('escape')) {
-        if (this.inventoryUI.isOpen()) {
+        if(this.inventoryUI.isOpen()){
             this.inventoryUI.close();
         } else {
             this.isPaused = !this.isPaused;
         }
     }
     
-    this.inventoryUI.update();
-
     if (this.isPaused) {
-        this.updatePauseMenu();
+      this.updatePauseMenu();
+      return;
+    }
+
+    if (this.inventoryUI.isOpen()) {
+        this.inventoryUI.update();
         return;
     }
     
-    if (this.inventoryUI.isOpen()) {
-        return;
+    const controlScheme = SettingsManager.instance.getEffectiveControlScheme();
+    if (controlScheme === 'keyboard') {
+        this.handleKeyboardHotbar();
     }
 
-    this.handleInGameTouch();
+    const endedTouches = this.sceneManager.touchHandler.justEndedTouches;
+    const mouseClick = this.sceneManager.mouseHandler.isLeftClicked ? [this.sceneManager.mouseHandler.position] : [];
+    this.handleInGamePointer([...endedTouches, ...mouseClick]);
+
     const inputState = this.controlManager.update();
     this.player.update(deltaTime, this.camera, inputState);
     this.world.update(this.player.position);
     this.camera.update(deltaTime);
     this.animationSystem.update(deltaTime, this.player);
 
-    this.itemEntities.forEach((entity, index) => {
-        entity.update(deltaTime, this.physicsSystem);
-        if (entity.shouldBeRemoved()) {
-            this.itemEntities.splice(index, 1);
-        } else {
-            this.player.tryPickupItem(entity);
-        }
+    this.itemEntities.forEach(entity => {
+      entity.update(deltaTime, this.physicsSystem);
+      this.player.tryPickupItem(entity);
     });
+    this.itemEntities = this.itemEntities.filter(e => !e.shouldBeRemoved());
   }
 
   private updatePauseMenu() {
-    const mousePos = this.sceneManager.mouseHandler.position;
-    this.hoveredButtonIndex = -1;
-    this.pauseMenuButtons.forEach((button, index) => {
-        if (mousePos.x >= button.rect.x && mousePos.x <= button.rect.x + button.rect.w &&
-            mousePos.y >= button.rect.y && mousePos.y <= button.rect.y + button.rect.h) {
-            this.hoveredButtonIndex = index;
-        }
-    });
-    
-    if(this.sceneManager.mouseHandler.isLeftClicked && this.hoveredButtonIndex !== -1) {
-        this.pauseMenuButtons[this.hoveredButtonIndex].action();
-    }
-
-    for(const touch of this.sceneManager.touchHandler.justEndedTouches) {
-        for(let i = 0; i < this.pauseMenuButtons.length; i++) {
-            const button = this.pauseMenuButtons[i];
-            if (touch.x >= button.rect.x && touch.x <= button.rect.x + button.rect.w &&
-                touch.y >= button.rect.y && touch.y <= button.rect.y + button.rect.h) {
-                button.action();
-                return;
-            }
-        }
-    }
-  }
-  
-  private onPlayerAction = (action: string, data: any) => {
-      if (action === 'openInventory') {
-          this.inventoryUI.openPlayerInventory();
-      }
-      if (action === 'openCraftingTable') {
-          this.inventoryUI.openCraftingTable();
-      }
-      if (action === 'openChest') {
-          this.inventoryUI.openChest(data.chestInventory);
-      }
-      if (action === 'breakBlock') {
-          const { x, y, item } = data;
-          if (item) {
-              const entity = new ItemEntity({ x: (x + 0.5) * BLOCK_SIZE, y: (y + 0.5) * BLOCK_SIZE }, item);
-              this.itemEntities.push(entity);
+      const mousePos = this.sceneManager.mouseHandler.position;
+      const justClicked = this.sceneManager.mouseHandler.isLeftClicked;
+      const endedTouches = this.sceneManager.touchHandler.justEndedTouches;
+      
+      this.hoveredButtonIndex = -1;
+      this.pauseMenuButtons.forEach((button, index) => {
+          if (mousePos.x >= button.rect.x && mousePos.x <= button.rect.x + button.rect.w &&
+              mousePos.y >= button.rect.y && mousePos.y <= button.rect.y + button.rect.h) {
+              this.hoveredButtonIndex = index;
           }
+      });
+      
+      const checkClick = (pos: Vector2) => {
+          for(const button of this.pauseMenuButtons) {
+              if (pos.x >= button.rect.x && pos.x <= button.rect.x + button.rect.w &&
+                  pos.y >= button.rect.y && pos.y <= button.rect.y + button.rect.h) {
+                  button.action();
+                  return true;
+              }
+          }
+          return false;
+      }
+      
+      if(justClicked) {
+          checkClick(mousePos);
+      }
+      for(const touch of endedTouches) {
+          if(checkClick(touch)) break;
       }
   }
 
   render(ctx: CanvasRenderingContext2D): void {
     this.renderer.render(ctx, this.world, this.player, this.sceneManager.mouseHandler, this.animationSystem, this.itemEntities);
-    
-    if (!this.inventoryUI.isOpen()) {
-        this.hud.render(ctx);
+    this.hud.render(ctx);
+
+    if (this.inventoryUI.isOpen()) {
+      this.inventoryUI.render(ctx);
     }
     
-    this.inventoryUI.render(ctx);
-
-    if (this.isPaused && !this.inventoryUI.isOpen()) {
-        this.renderPauseScreen(ctx);
+    if (this.isPaused) {
+      this.renderPauseMenu(ctx);
     }
 
-    if (this.isDead) {
-        this.renderDeathScreen(ctx);
+    if (this.player.isDead) {
+      this.renderDeathScreen(ctx);
     }
   }
 
-  private renderPauseScreen(ctx: CanvasRenderingContext2D): void {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    
-    ctx.font = "60px Minecraftia";
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.fillText("Game Menu", ctx.canvas.width / 2, ctx.canvas.height / 2 - 100);
+  private renderPauseMenu(ctx: CanvasRenderingContext2D) {
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-    this.pauseMenuButtons.forEach((button, index) => {
-        const isHovered = index === this.hoveredButtonIndex;
-        ctx.fillStyle = isHovered ? '#a0a0a0' : '#7f7f7f';
-        ctx.strokeStyle = '#383838';
-        ctx.lineWidth = 4;
-        ctx.fillRect(button.rect.x, button.rect.y, button.rect.w, button.rect.h);
-        ctx.strokeRect(button.rect.x, button.rect.y, button.rect.w, button.rect.h);
+      ctx.font = "60px Minecraftia";
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.fillText("Game Paused", ctx.canvas.width / 2, ctx.canvas.height / 2 - 120);
 
-        ctx.font = "30px Minecraftia";
-        ctx.fillStyle = '#ffffff';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(button.label, button.rect.x + button.rect.w / 2, button.rect.y + button.rect.h / 2);
-    });
-    ctx.textBaseline = 'alphabetic';
+      this.pauseMenuButtons.forEach((button, index) => {
+          ctx.fillStyle = this.hoveredButtonIndex === index ? '#b0b0b0' : '#7f7f7f';
+          ctx.fillRect(button.rect.x, button.rect.y, button.rect.w, button.rect.h);
+          ctx.font = "30px Minecraftia";
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(button.label, button.rect.x + button.rect.w / 2, button.rect.y + button.rect.h / 2);
+      });
   }
-  
-  private renderDeathScreen(ctx: CanvasRenderingContext2D): void {
-    ctx.fillStyle = 'rgba(100, 0, 0, 0.5)';
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-    ctx.font = "80px Minecraftia";
-    ctx.fillStyle = '#ff4444';
-    ctx.textAlign = 'center';
-    ctx.fillText("You Died", ctx.canvas.width / 2, ctx.canvas.height / 2 - 50);
-    
-    ctx.font = "30px Minecraftia";
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText("Click or Tap to Respawn", ctx.canvas.width / 2, ctx.canvas.height / 2 + 20);
+  private renderDeathScreen(ctx: CanvasRenderingContext2D) {
+      ctx.fillStyle = 'rgba(120, 0, 0, 0.5)';
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+      ctx.font = "80px Minecraftia";
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.fillText("You Died!", ctx.canvas.width / 2, ctx.canvas.height / 2 - 50);
+
+      // Simple respawn button for now
+      const btn = {x: ctx.canvas.width/2 - 100, y: ctx.canvas.height/2 + 20, w: 200, h: 50};
+      ctx.fillStyle = '#7f7f7f';
+      ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+      ctx.font = "30px Minecraftia";
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText("Respawn", ctx.canvas.width / 2, btn.y + btn.h/2);
+      
+      if(this.sceneManager.mouseHandler.isLeftClicked) {
+          const pos = this.sceneManager.mouseHandler.position;
+          if(pos.x > btn.x && pos.x < btn.x+btn.w && pos.y > btn.y && pos.y < btn.y+btn.h) {
+              this.player.respawn();
+          }
+      }
   }
 }

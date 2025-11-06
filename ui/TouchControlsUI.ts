@@ -1,6 +1,7 @@
 
 
 import { TOUCH_JOYSTICK_KNOB_RADIUS, TOUCH_JOYSTICK_RADIUS, TOUCH_JOYSTICK_STROKE_WIDTH } from '../core/Constants';
+import { Player } from '../entities/Player';
 import { SettingsManager } from '../core/SettingsManager';
 import { TouchHandler } from '../input/TouchHandler';
 
@@ -11,9 +12,9 @@ export class TouchControlsUI {
         this.touchHandler = touchHandler;
     }
 
-    public render(ctx: CanvasRenderingContext2D) {
+    public render(ctx: CanvasRenderingContext2D, player: Player) {
         this.renderJoystick(ctx);
-        this.renderButtons(ctx);
+        this.renderButtons(ctx, player);
     }
 
     private renderJoystick(ctx: CanvasRenderingContext2D) {
@@ -35,7 +36,7 @@ export class TouchControlsUI {
         ctx.fill();
     }
     
-    private renderButtons(ctx: CanvasRenderingContext2D) {
+    private renderButtons(ctx: CanvasRenderingContext2D, player: Player) {
         const settings = SettingsManager.instance.settings;
 
         this.touchHandler.getButtons().forEach(button => {
@@ -49,11 +50,11 @@ export class TouchControlsUI {
             ctx.fill();
             ctx.stroke();
 
-            this.drawIconForButton(ctx, button);
+            this.drawIconForButton(ctx, button, player);
         });
     }
 
-    private drawIconForButton(ctx: CanvasRenderingContext2D, button: any) {
+    private drawIconForButton(ctx: CanvasRenderingContext2D, button: any, player: Player) {
         const { x, y, w, h } = button.rect;
         const cx = x + w / 2;
         const cy = y + h / 2;
@@ -81,15 +82,9 @@ export class TouchControlsUI {
                 ctx.lineTo(cx + size, cy - size/2);
                 ctx.stroke();
                 break;
-            case 'place':
-                ctx.lineWidth = Math.max(5, w * 0.12);
-                ctx.moveTo(cx - size, cy);
-                ctx.lineTo(cx + size, cy);
-                ctx.moveTo(cx, cy - size);
-                ctx.lineTo(cx, cy + size);
-                ctx.stroke();
-                break;
-            case 'destroy': // Pickaxe Icon
+            case 'action':
+                // TODO: Change icon based on player.targetBlock
+                // For now, default to pickaxe
                 ctx.lineWidth = Math.max(5, w * 0.12);
                 // Handle
                 ctx.moveTo(cx + size * 0.8, cy - size * 0.8);
@@ -101,11 +96,11 @@ export class TouchControlsUI {
                 break;
             case 'inventory':
                 const dotRadius = size / 5;
-                ctx.arc(cx - size, cy, dotRadius, 0, 2 * Math.PI);
+                ctx.arc(cx - size*0.7, cy, dotRadius, 0, 2 * Math.PI);
                 ctx.moveTo(cx, cy);
                 ctx.arc(cx, cy, dotRadius, 0, 2 * Math.PI);
-                ctx.moveTo(cx + size, cy);
-                ctx.arc(cx + size, cy, dotRadius, 0, 2 * Math.PI);
+                ctx.moveTo(cx + size*0.7, cy);
+                ctx.arc(cx + size*0.7, cy, dotRadius, 0, 2 * Math.PI);
                 ctx.fill();
                 break;
             case 'sprint': // ">>" icon

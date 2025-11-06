@@ -111,11 +111,36 @@ export class Player {
     }
     
     this.handleFallDamage();
-    this.handleBlockInteraction(inputState);
+    this.handleBlockInteraction(inputState, camera);
     this.updateParticles();
     this.updateVitals(deltaTime);
     this.updateAnimationState(inputState);
     this.updateBlinking(deltaTime);
+    this.updateEyeAndHeadDirection();
+  }
+  
+  private updateEyeAndHeadDirection(): void {
+    let targetEyeX = 0;
+    let targetEyeY = 0;
+    
+    if (this.targetBlock) {
+        const targetWorldX = (this.targetBlock.x + 0.5) * BLOCK_SIZE;
+        const playerWorldX = this.position.x + this.width / 2;
+        targetEyeX = (targetWorldX - playerWorldX) / REACH_DISTANCE;
+
+        const targetWorldY = (this.targetBlock.y + 0.5) * BLOCK_SIZE;
+        const playerWorldY = this.position.y + this.height * 0.2; // eye level
+        targetEyeY = (targetWorldY - playerWorldY) / REACH_DISTANCE;
+    } else {
+        targetEyeX = this.facingDirection * 0.4;
+    }
+
+    // Clamp and smooth
+    targetEyeX = Math.max(-0.5, Math.min(0.5, targetEyeX));
+    targetEyeY = Math.max(-0.4, Math.min(0.4, targetEyeY));
+    
+    this.eyeOffset.x += (targetEyeX - this.eyeOffset.x) * 0.15;
+    this.eyeOffset.y += (targetEyeY - this.eyeOffset.y) * 0.15;
   }
 
   public respawn(): void {
@@ -200,49 +225,67 @@ export class Player {
 
   private updateTargeting(camera: Camera): void {
       const controlScheme = SettingsManager.instance.getEffectiveControlScheme();
-      let worldPos: Vector2 | null = null;
   
       if (controlScheme === 'keyboard') {
-          worldPos = camera.screenToWorld(this.mouseHandler.position);
-      } else { // 'touch'
-          const activeTouch = this.touchHandler.getPrimaryTouchPos();
-          if (activeTouch) {
-              const isJoystickTouch = this.touchHandler.isJoystickActive();
-              // Crude check to avoid targeting while using joystick or tapping on the hotbar/buttons area
-              if (!isJoystickTouch && activeTouch.y < camera.height - (HOTBAR_SLOT_SIZE + 40)) {
-                  worldPos = camera.screenToWorld(activeTouch);
-              }
-          }
-      }
+          // Continuous targeting for mouse
+          const worldPos = camera.screenToWorld(this.mouseHandler.position);
+          const blockX = Math.floor(worldPos.x / BLOCK_SIZE);
+          const blockY = Math.floor(worldPos.y / BLOCK_SIZE);
   
-      if (!worldPos) {
-          this.targetBlock = null;
-          return;
-      }
+          const playerCenterX = this.position.x + this.width / 2;
+          const playerCenterY = this.position.y + this.height / 2;
+          const blockCenterX = (blockX + 0.5) * BLOCK_SIZE;
+          const blockCenterY = (blockY + 0.5) * BLOCK_SIZE;
   
-      const blockX = Math.floor(worldPos.x / BLOCK_SIZE);
-      const blockY = Math.floor(worldPos.y / BLOCK_SIZE);
+          const dx = playerCenterX - blockCenterX;
+          const dy = playerCenterY - blockCenterY;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          const candidateTarget = { x: blockX, y: blockY };
   
-      const playerCenterX = this.position.x + this.width / 2;
-      const playerCenterY = this.position.y + this.height / 2;
-      const blockCenterX = (blockX + 0.5) * BLOCK_SIZE;
-      const blockCenterY = (blockY + 0.5) * BLOCK_SIZE;
-  
-      const dx = playerCenterX - blockCenterX;
-      const dy = playerCenterY - blockCenterY;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      const candidateTarget = { x: blockX, y: blockY };
-  
-      if (distance <= REACH_DISTANCE) {
-          // Only perform the more expensive line-of-sight check if in range
-          if (this.checkLineOfSight(candidateTarget)) {
+          if (distance <= REACH_DISTANCE && this.checkLineOfSight(candidateTarget)) {
               this.targetBlock = candidateTarget;
           } else {
               this.targetBlock = null;
           }
-      } else {
-          this.targetBlock = null;
+      } else { // 'touch' - Event-based "sticky" targeting
+          const interactionTapPos = this.touchHandler.getInteractionTap();
+          if (interactionTapPos) {
+              const worldPos = camera.screenToWorld(interactionTapPos);
+              
+              const blockX = Math.floor(worldPos.x / BLOCK_SIZE);
+              const blockY = Math.floor(worldPos.y / BLOCK_SIZE);
+  
+              const playerCenterX = this.position.x + this.width / 2;
+              const playerCenterY = this.position.y + this.height / 2;
+              const blockCenterX = (blockX + 0.5) * BLOCK_SIZE;
+              const blockCenterY = (blockY + 0.5) * BLOCK_SIZE;
+  
+              const dx = playerCenterX - blockCenterX;
+              const dy = playerCenterY - blockCenterY;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+              
+              const tappedBlockType = getBlockType(this.world.getBlock(blockX, blockY));
+              let canTarget = false;
+              if (tappedBlockType && tappedBlockType.isSolid) {
+                  canTarget = true;
+              } else { // It's air or non-solid, check for adjacent solid blocks
+                  const neighbors = [{x:0, y:1}, {x:0, y:-1}, {x:1, y:0}, {x:-1, y:0}];
+                  for (const n of neighbors) {
+                      const neighborType = getBlockType(this.world.getBlock(blockX + n.x, blockY + n.y));
+                      if (neighborType && neighborType.isSolid) {
+                          canTarget = true;
+                          break;
+                      }
+                  }
+              }
+
+              if (distance <= REACH_DISTANCE && canTarget && this.checkLineOfSight({ x: blockX, y: blockY })) {
+                  this.targetBlock = { x: blockX, y: blockY };
+              } else {
+                  this.targetBlock = null;
+              }
+          }
       }
   }
 
@@ -319,7 +362,7 @@ export class Player {
     this.isDead = true;
   }
   
-  private handleBlockInteraction(inputState: InputState): void {
+  private handleBlockInteraction(inputState: InputState, camera: Camera): void {
     if (!this.targetBlock || !this.checkLineOfSight(this.targetBlock)) {
       this.breakingBlock = null;
       this.isMining = false;
@@ -339,8 +382,18 @@ export class Player {
       }
 
       if (this.breakingBlock.progress >= blockType.hardness) {
+        let drop = blockType.itemDrop;
+
+        if (blockType.id === BlockId.STONE) {
+            const heldItem = this.inventory.getItem(this.activeHotbarSlot);
+            const itemInfo = heldItem ? CraftingSystem.getItemInfo(heldItem.id) : null;
+            const toolInfo = itemInfo ? itemInfo.toolInfo : null;
+            if (toolInfo?.type !== 'pickaxe') {
+                drop = undefined; // Drop nothing if not mined with a pickaxe
+            }
+        }
+        
         this.world.setBlock(blockX, blockY, BlockId.AIR);
-        const drop = blockType.itemDrop;
         if (drop && this.gamemode === 'survival') {
           const count = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
           this.actionCallback('breakBlock', { x: blockX, y: blockY, item: { id: drop.itemId, count } });
@@ -370,17 +423,44 @@ export class Player {
       if (heldItem) {
         const itemInfo = CraftingSystem.getItemInfo(heldItem.id);
         if (itemInfo && itemInfo.blockId) {
-          // Simplified placement logic: find an adjacent air block relative to player
-          const playerCenter = { x: this.position.x + this.width / 2, y: this.position.y + this.height / 2 };
-          const targetCenter = { x: (blockX + 0.5) * BLOCK_SIZE, y: (blockY + 0.5) * BLOCK_SIZE };
-          const dx = playerCenter.x - targetCenter.x;
-          const dy = playerCenter.y - targetCenter.y;
-          let placeX = blockX, placeY = blockY;
-          
-          if(Math.abs(dx) > Math.abs(dy)) {
-              placeX += dx > 0 ? -1 : 1;
+          let placeX: number, placeY: number;
+          const targetIsSolid = blockType && blockType.isSolid;
+
+          if (!targetIsSolid) {
+              // Target is an air block, place directly into it
+              placeX = blockX;
+              placeY = blockY;
           } else {
-              placeY += dy > 0 ? -1 : 1;
+              // Target is a solid block, place adjacent to it
+              const controlScheme = SettingsManager.instance.getEffectiveControlScheme();
+              if (controlScheme === 'keyboard') {
+                  const worldPos = camera.screenToWorld(this.mouseHandler.position);
+                  const targetBlockCenterX = (blockX + 0.5) * BLOCK_SIZE;
+                  const targetBlockCenterY = (blockY + 0.5) * BLOCK_SIZE;
+                  const deltaX = worldPos.x - targetBlockCenterX;
+                  const deltaY = worldPos.y - targetBlockCenterY;
+
+                  if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                      placeX = blockX + (deltaX > 0 ? 1 : -1);
+                      placeY = blockY;
+                  } else {
+                      placeX = blockX;
+                      placeY = blockY + (deltaY > 0 ? 1 : -1);
+                  }
+              } else { // Touch
+                  const playerCenter = { x: this.position.x + this.width / 2, y: this.position.y + this.height / 2 };
+                  const targetCenter = { x: (blockX + 0.5) * BLOCK_SIZE, y: (blockY + 0.5) * BLOCK_SIZE };
+                  const dx = playerCenter.x - targetCenter.x;
+                  const dy = playerCenter.y - targetCenter.y;
+                  
+                  if (Math.abs(dx) > Math.abs(dy)) {
+                      placeX = blockX + (dx > 0 ? -1 : 1);
+                      placeY = blockY;
+                  } else {
+                      placeX = blockX;
+                      placeY = blockY + (dy > 0 ? -1 : 1);
+                  }
+              }
           }
           
           const blockAtPlacePos = getBlockType(this.world.getBlock(placeX, placeY));

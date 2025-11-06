@@ -9,7 +9,7 @@ export class PlayerRenderer {
 
         ctx.save();
         ctx.translate(part.x, part.y);
-        ctx.rotate(part.rotation * facingDirection);
+        ctx.rotate(part.rotation); // Rotation is now pre-calculated in model space
         ctx.translate(-part.width / 2, -part.height / 2);
 
         // Main Fill
@@ -73,7 +73,7 @@ export class PlayerRenderer {
         ctx.save();
         // Apply the same transformations as the head part itself
         ctx.translate(head.x, head.y);
-        ctx.rotate(head.rotation * player.facingDirection);
+        ctx.rotate(head.rotation);
         ctx.translate(-head.width / 2, -head.height / 2);
     
         const hairHeight = head.height * 0.4;
@@ -144,9 +144,13 @@ export class PlayerRenderer {
         ctx.translate(player.position.x + player.width / 2, player.position.y);
         ctx.scale(player.facingDirection, 1);
 
-        const parts = [
+        const parts: BodyPart[] = [
             pose.head, pose.torso, pose.leftArm, pose.rightArm, pose.leftLeg, pose.rightLeg
-        ].sort((a, b) => a.z - b.z);
+        ];
+
+        // The animation system is now responsible for providing the correct z-indices.
+        // The renderer just sorts and draws.
+        parts.sort((a, b) => a.z - b.z);
 
         for (const part of parts) {
             this.drawPart(ctx, part, player, player.facingDirection);

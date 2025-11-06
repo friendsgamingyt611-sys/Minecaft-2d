@@ -1,4 +1,3 @@
-
 import { Player } from '../entities/Player';
 import { BodyPart, PlayerPose, Vector2 } from '../types';
 // FIX: Import PLAYER_HEIGHT constant.
@@ -34,8 +33,16 @@ export class AnimationSystem {
             pose = this.getAnimationStatePose(player);
         }
         
-        // FIX: The `eyeOffset` is now correctly propagated from the player state into the pose.
-        pose.eyeOffset = player.eyeOffset;
+        // Convert world-relative eye offset to local-relative for the model pose
+        const localEyeOffsetX = player.eyeOffset.x * player.facingDirection;
+        
+        // Apply head turn based on eye direction for a more natural look
+        // The head rotation is now additive with the torso rotation from the animation pose.
+        pose.head.rotation += localEyeOffsetX * 0.3 - pose.torso.rotation; // Counter-rotate from torso lean
+        pose.head.y += player.eyeOffset.y * (BLOCK_SIZE * 0.1); // Nod up/down
+        
+        // Pass the local-space offset to the pose for the renderer to use
+        pose.eyeOffset = { x: localEyeOffsetX, y: player.eyeOffset.y };
         return pose;
     }
 
@@ -74,6 +81,7 @@ export class AnimationSystem {
         
         const torsoBaseY = playerHeight - legHeight;
         
+        // The default pose has the player's left limbs (closer to the camera when facing right) in front.
         return {
             head: { x: 0, y: torsoBaseY - torsoHeight - headSize / 2, width: headSize, height: headSize, rotation: 0, color: skin, z: 2 },
             torso: { x: 0, y: torsoBaseY - torsoHeight / 2, width: torsoWidth, height: torsoHeight, rotation: 0, color: shirt, z: 1 },
@@ -85,16 +93,31 @@ export class AnimationSystem {
         };
     }
 
-    // New helper to correctly position a limb based on a joint on the torso
     private positionLimb(limb: BodyPart, torso: BodyPart, jointOffset: Vector2, angle: number) {
-        limb.rotation = angle;
-        const jointX = torso.x + jointOffset.x;
-        const jointY = torso.y + jointOffset.y;
-        const pivotToCenterY = limb.height / 2;
-        const rotatedX = pivotToCenterY * Math.sin(angle);
-        const rotatedY = pivotToCenterY * Math.cos(angle);
-        limb.x = jointX + rotatedX;
-        limb.y = jointY + rotatedY;
+        // Standard Counter-Clockwise rotation matrix. Produces Clockwise rotation in a Y-Down system.
+        const rotate = (p: Vector2, angle: number) => {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            return {
+                x: p.x * cos - p.y * sin,
+                y: p.x * sin + p.y * cos,
+            };
+        };
+
+        const rotatedJointOffset = rotate(jointOffset, torso.rotation);
+        const jointPos = {
+            x: torso.x + rotatedJointOffset.x,
+            y: torso.y + rotatedJointOffset.y
+        };
+
+        const finalAngle = torso.rotation + angle;
+        limb.rotation = finalAngle;
+
+        const pivotToCenter = { x: 0, y: limb.height / 2 };
+        const rotatedPivotToCenter = rotate(pivotToCenter, finalAngle);
+        
+        limb.x = jointPos.x + rotatedPivotToCenter.x;
+        limb.y = jointPos.y + rotatedPivotToCenter.y;
     }
 
     private createIdlePose(player: Player): PlayerPose {
@@ -103,7 +126,6 @@ export class AnimationSystem {
         pose.torso.y -= breath * BLOCK_SIZE * 0.2;
         pose.head.y -= breath * BLOCK_SIZE * 0.4;
         
-        // Position limbs relative to the torso
         const torso = pose.torso;
         this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, 0);
         this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, 0);
@@ -116,17 +138,25 @@ export class AnimationSystem {
     private createWalkingPose(player: Player): PlayerPose {
         const pose = this.createDefaultPose(player);
         const swingAngle = Math.sin(this.animationTimer * 10) * (player.isSprinting ? 0.8 : 0.6);
-        
-        // Add torso bob
+
         const bob = Math.abs(Math.sin(this.animationTimer * 10)) * 0.05 * BLOCK_SIZE;
         pose.torso.y -= bob;
         pose.head.y -= bob;
 
+        pose.torso.rotation = player.isSprinting ? 0.2 : 0.1;
+
         const torso = pose.torso;
-        this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, swingAngle);
-        this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, -swingAngle);
-        this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, -swingAngle);
-        this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, swingAngle);
+
+        // The animation angles are always for a right-facing walk cycle.
+        const rightLegAngle = swingAngle;
+        const leftLegAngle = -swingAngle;
+        const rightArmAngle = -swingAngle;
+        const leftArmAngle = swingAngle;
+        
+        this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, rightArmAngle);
+        this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, leftArmAngle);
+        this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, rightLegAngle);
+        this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, leftLegAngle);
         
         return pose;
     }
@@ -135,10 +165,13 @@ export class AnimationSystem {
         const pose = this.createDefaultPose(player);
         const torso = pose.torso;
         
-        this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, 0.5);
-        this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, -0.2);
-        this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, -0.3);
-        this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, 0.3);
+        const armAngle = -0.4;
+        const legAngle = 0.2;
+
+        this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, armAngle);
+        this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, armAngle);
+        this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, legAngle);
+        this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, legAngle);
 
         return pose;
     }
@@ -147,17 +180,20 @@ export class AnimationSystem {
         const pose = this.createDefaultPose(player);
         const torso = pose.torso;
         
-        this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, -0.2);
-        this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, 0.2);
-        this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, 0.1);
-        this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, -0.1);
+        const armAngle = -0.2;
+        const legAngle = 0.1;
+
+        this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, armAngle);
+        this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, armAngle);
+        this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, legAngle);
+        this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, legAngle);
         
         return pose;
     }
 
     private createLandingPose(player: Player, progress: number): PlayerPose {
         const pose = this.createDefaultPose(player);
-        const crouchAmount = Math.sin((1 - progress) * Math.PI) * 0.15 * BLOCK_SIZE; // Use sin curve for smooth ease-in-out
+        const crouchAmount = Math.sin((1 - progress) * Math.PI) * 0.15 * BLOCK_SIZE;
         
         pose.torso.y += crouchAmount;
         pose.head.y += crouchAmount;
@@ -176,8 +212,8 @@ export class AnimationSystem {
 
     private createMiningPose(player: Player): PlayerPose {
         const pose = this.createDefaultPose(player);
-        const swingProgress = (this.mineSwingTimer % 0.5) / 0.5; // 0.5 second swing
-        const swingAngle = Math.sin(swingProgress * Math.PI) * 1.5; // Use half-circle for a better swing
+        const swingProgress = (this.mineSwingTimer % 0.5) / 0.5;
+        const swingAngle = Math.sin(swingProgress * Math.PI) * 1.5;
 
         pose.torso.rotation = swingAngle * 0.1;
 
@@ -193,21 +229,34 @@ export class AnimationSystem {
     private createSneakingPose(player: Player): PlayerPose {
         const pose = this.createDefaultPose(player);
         
-        // Lower the body
-        const sneakOffset = BLOCK_SIZE * 0.2;
-        pose.torso.y += sneakOffset;
-        pose.head.y += sneakOffset;
-
-        // Slight crouch
-        pose.torso.rotation = 0.1;
-        pose.head.rotation = -0.1;
-
+        const sneakOffsetY = (PLAYER_HEIGHT - player.height);
+        pose.torso.y += sneakOffsetY;
+        pose.head.y += sneakOffsetY;
+        
+        pose.torso.rotation = 0.5; 
         const torso = pose.torso;
-        this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, 0);
-        this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, 0);
-        this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, -0.2);
-        this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, 0.2);
+        
+        if (Math.abs(player.velocity.x) > 0.1) {
+            const swingAngle = Math.sin(this.animationTimer * 7) * 0.35;
 
+            const rightLegAngle = swingAngle;
+            const leftLegAngle = -swingAngle;
+    
+            this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, rightLegAngle);
+            this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, leftLegAngle);
+            
+            this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, 0.2 - rightLegAngle * 0.5);
+            this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, 0.2 - leftLegAngle * 0.5);
+        } else { 
+            const legAngle = 0.6;
+            this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, legAngle);
+            this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, legAngle);
+            
+            const armAngle = 0.4;
+            this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, armAngle);
+            this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, armAngle);
+        }
+    
         return pose;
     }
 }

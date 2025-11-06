@@ -25,6 +25,10 @@ export class InventoryUI {
     private playerCraftingGrid = new Inventory(4);
     private tableCraftingGrid = new Inventory(9);
     private craftingResultSlot = new Inventory(1);
+    
+    // V3.1 Double-click state
+    private lastClick = { time: 0, slot: -1, inv: null as Inventory | null };
+    private readonly DOUBLE_CLICK_WINDOW = 300; // ms
 
     constructor(player: Player, craftingSystem: CraftingSystem, mouseHandler: MouseHandler, touchHandler: TouchHandler) {
         this.player = player;
@@ -116,7 +120,23 @@ export class InventoryUI {
         const processClick = (pos: Vector2, isRight: boolean) => {
             for (const loc of clickLocations) {
                 if (pos.x > loc.rect.x && pos.x < loc.rect.x + loc.rect.w && pos.y > loc.rect.y && pos.y < loc.rect.y + loc.rect.h) {
-                    this.handleSlotClick(loc.inv, loc.rect.slot, loc.isCraftingOutput || false, isRight);
+                    
+                    if (!isRight) { // Handle left clicks (single and double)
+                        const now = Date.now();
+                        const isDoubleClick = now - this.lastClick.time < this.DOUBLE_CLICK_WINDOW &&
+                                              loc.rect.slot === this.lastClick.slot &&
+                                              loc.inv === this.lastClick.inv;
+                        
+                        if (isDoubleClick) {
+                            this.handleQuickMove(loc.inv, loc.rect.slot);
+                            this.lastClick.time = 0; // Prevent triple-click
+                        } else {
+                            this.handleSlotClick(loc.inv, loc.rect.slot, loc.isCraftingOutput || false, false);
+                            this.lastClick = { time: now, slot: loc.rect.slot, inv: loc.inv };
+                        }
+                    } else { // Handle right clicks
+                         this.handleSlotClick(loc.inv, loc.rect.slot, loc.isCraftingOutput || false, true);
+                    }
                     return true;
                 }
             }
@@ -128,6 +148,35 @@ export class InventoryUI {
         } else {
             for (const pos of leftClicks) {
                 if (processClick(pos, false)) break; // only process one click per frame
+            }
+        }
+    }
+    
+    private handleQuickMove(sourceInv: Inventory, sourceSlotIndex: number) {
+        if (this.draggingItem) return; // Don't quick move while dragging
+
+        const itemToMatch = sourceInv.getItem(sourceSlotIndex);
+        if (!itemToMatch) return;
+
+        let destInv: Inventory | null = null;
+        if (sourceInv === this.player.inventory) {
+            if (this.currentView === 'chest' && this.chestInventory) destInv = this.chestInventory;
+            else if (this.currentView === 'crafting_table') destInv = this.tableCraftingGrid;
+            else if (this.currentView === 'player') destInv = this.playerCraftingGrid;
+        } else {
+            destInv = this.player.inventory;
+        }
+
+        if (!destInv) return;
+
+        const itemIdToMove = itemToMatch.id;
+
+        // Iterate through the source inventory and move all matching items
+        for (let i = 0; i < sourceInv.getSize(); i++) {
+            const currentItem = sourceInv.getItem(i);
+            if (currentItem && currentItem.id === itemIdToMove) {
+                const remaining = destInv.addItem(currentItem);
+                sourceInv.setItem(i, remaining);
             }
         }
     }
@@ -162,7 +211,7 @@ export class InventoryUI {
                 if (this.draggingItem.item.count <= 0) this.draggingItem = null;
 
             } else if (!clickedItem) {
-                const count = isRightClick ? 1 : this.draggingItem.item.count;
+                const count = isRightClick && this.draggingItem.item.count > 1 ? 1 : this.draggingItem.item.count;
                 inventory.setItem(slotIndex, { ...this.draggingItem.item, count: count });
                 this.draggingItem.item.count -= count;
                 if (this.draggingItem.item.count <= 0) this.draggingItem = null;

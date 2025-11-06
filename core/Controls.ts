@@ -1,4 +1,5 @@
 
+
 import { InputManager } from "../input/InputManager";
 import { MouseHandler } from "../input/MouseHandler";
 import { TouchHandler } from "../input/TouchHandler";
@@ -10,6 +11,7 @@ export class ControlManager {
     private inputManager: InputManager;
     private mouseHandler: MouseHandler;
     private touchHandler: TouchHandler;
+    private isSprintToggled: boolean = false;
 
     constructor(inputManager: InputManager, mouseHandler: MouseHandler, touchHandler: TouchHandler) {
         this.inputManager = inputManager;
@@ -37,6 +39,7 @@ export class ControlManager {
         const scheme = SettingsManager.instance.getEffectiveControlScheme();
 
         if (scheme === 'keyboard') {
+            this.isSprintToggled = false; // Disable toggle when using keyboard
             this.updateKeyboardState();
         } else {
             this.touchHandler.update();
@@ -71,10 +74,21 @@ export class ControlManager {
         this.inputState.jump.pressed = isJumpDown;
         
         this.inputState.sneak = this.touchHandler.isButtonPressed('sneak');
-        this.inputState.sprint = this.touchHandler.isButtonPressed('sprint');
-        this.inputState.destroy = this.touchHandler.isButtonPressed('destroy');
-        // FIX: Changed 'place' to be a single-press action to prevent rapid placing.
-        this.inputState.place = this.touchHandler.isButtonPressed('place', true); // Consume press
+
+        // Sprint Toggle Logic
+        if (this.touchHandler.isButtonPressed('sprint', true)) { // consume press
+            this.isSprintToggled = !this.isSprintToggled;
+        }
+        if (this.inputState.moveX === 0) { // Cancel sprint when not moving
+            this.isSprintToggled = false;
+        }
+        this.inputState.sprint = this.isSprintToggled;
+        
+        // Consolidated Action Button: A hold is 'destroy', a tap (justPressed) is 'place'.
+        // In Player.ts, the block breaking progress only accumulates on hold, so a single frame of `destroy` on tap is negligible.
+        this.inputState.destroy = this.touchHandler.isButtonPressed('action');
+        this.inputState.place = this.touchHandler.isButtonPressed('action', true);
+        
         this.inputState.inventory = this.touchHandler.isButtonPressed('inventory', true); // Consume press
         this.inputState.drop = this.touchHandler.isButtonPressed('drop', true); // Consume press
     }

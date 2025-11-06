@@ -1,6 +1,6 @@
 
 
-import { TOUCH_JOYSTICK_RADIUS, TOUCH_JOYSTICK_KNOB_RADIUS, TOUCH_BUTTON_SIZE, TOUCH_BUTTON_MARGIN } from '../core/Constants';
+import { TOUCH_JOYSTICK_RADIUS, TOUCH_JOYSTICK_KNOB_RADIUS, TOUCH_BUTTON_SIZE, TOUCH_BUTTON_MARGIN, HOTBAR_SLOT_SIZE } from '../core/Constants';
 import { SettingsManager } from '../core/SettingsManager';
 import { Vector2 } from '../types';
 
@@ -10,9 +10,10 @@ interface Touch {
     y: number;
     startX: number;
     startY: number;
+    isUITouch?: boolean;
 }
 
-type TouchButtonType = 'jump' | 'sneak' | 'destroy' | 'place' | 'inventory' | 'drop' | 'sprint';
+type TouchButtonType = 'jump' | 'sneak' | 'action' | 'inventory' | 'drop' | 'sprint';
 
 interface TouchButton {
     id: TouchButtonType;
@@ -35,10 +36,12 @@ export class TouchHandler {
 
     private buttons: Map<TouchButtonType, TouchButton> = new Map();
     private buttonTouchIds: Map<number, TouchButtonType> = new Map();
+    private joystickActivationZone: { x: number; y: number; w: number; h: number; };
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
-        this.initializeButtons();
+        this.joystickActivationZone = { x: 0, y: 0, w: 0, h: 0 }; // Initialized in updateButtonLayout
+        this.updateButtonLayout();
         this.addEventListeners();
     }
 
@@ -48,22 +51,33 @@ export class TouchHandler {
         const size = TOUCH_BUTTON_SIZE * settings.touchButtonSize;
         const margin = TOUCH_BUTTON_MARGIN;
 
-        const buttonDefs: { id: TouchButtonType, pos: Vector2 }[] = [
-            // Right-side buttons
-            { id: 'jump', pos: { x: width - size - margin, y: height - size * 2 - margin * 2 } },
+        // Define joystick zone first as other buttons may be relative to it
+        this.joystickActivationZone = {
+            x: 0,
+            y: height / 2,
+            w: width / 3,
+            h: height / 2
+        };
+
+        const buttonDefs: { id: TouchButtonType, pos: Vector2, customSize?: number }[] = [
+            // Right-side main buttons
+            { id: 'jump', pos: { x: width - size - margin, y: height - size - margin } },
             { id: 'sneak', pos: { x: width - size * 2 - margin * 2, y: height - size - margin } },
-            { id: 'place', pos: { x: width - size - margin, y: height - size * 3 - margin * 3 } },
-            { id: 'destroy', pos: { x: width - size * 2 - margin * 2, y: height - size * 2 - margin * 2} },
-            { id: 'inventory', pos: { x: width - size * 3 - margin * 3, y: height - size - margin } },
-            // Left-side sprint button
-            { id: 'sprint', pos: { x: margin, y: height - size * 2 - margin * 2 } }
+            { id: 'action', pos: { x: width - size - margin, y: height - size * 2 - margin * 2 } },
+            
+            // Inventory button top-right
+            { id: 'inventory', pos: { x: width - (size * 0.8) - margin, y: margin }, customSize: size * 0.8 },
+
+            // Sprint button above joystick zone
+            { id: 'sprint', pos: { x: this.joystickActivationZone.x + margin, y: this.joystickActivationZone.y - size - margin } }
         ];
 
         this.buttons.clear();
         buttonDefs.forEach(def => {
+            const buttonSize = def.customSize || size;
             this.buttons.set(def.id, {
                 id: def.id,
-                rect: { x: def.pos.x, y: def.pos.y, w: size, h: size },
+                rect: { x: def.pos.x, y: def.pos.y, w: buttonSize, h: buttonSize },
                 isPressed: false,
                 justPressed: false
             });
@@ -99,6 +113,20 @@ export class TouchHandler {
         }
         return button.isPressed;
     }
+    
+    public getInteractionTap(): Vector2 | null {
+        // Find a tap (touch that started and ended without moving much) that wasn't on a UI element.
+        for (const touch of this.justEndedTouches) {
+            const dx = touch.x - touch.startX;
+            const dy = touch.y - touch.startY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (!touch.isUITouch && distance < 20) { // Threshold for tap vs drag
+                return { x: touch.x, y: touch.y };
+            }
+        }
+        return null;
+    }
 
     public isJoystickActive(): boolean {
         return this.joystickTouchId !== null;
@@ -108,8 +136,12 @@ export class TouchHandler {
     
     public getPrimaryTouchPos(): Vector2 | null {
         if (this.activeTouches.size > 0) {
-            const firstTouch = this.activeTouches.values().next().value;
-            return { x: firstTouch.x, y: firstTouch.y };
+            // Find the first non-UI touch if possible
+            for(const touch of this.activeTouches.values()) {
+                if(!touch.isUITouch) return { x: touch.x, y: touch.y };
+            }
+            // Otherwise, just return the first touch
+            return this.activeTouches.values().next().value;
         }
         return null;
     }
@@ -150,11 +182,9 @@ export class TouchHandler {
         event.preventDefault();
         for (const touch of Array.from(event.changedTouches)) {
             const pos = this.getTouchPos(touch);
-            const newTouch = { id: touch.identifier, ...pos, startX: pos.x, startY: pos.y };
+            const newTouch: Touch = { id: touch.identifier, ...pos, startX: pos.x, startY: pos.y, isUITouch: false };
             this.activeTouches.set(touch.identifier, newTouch);
             this.justStartedTouches.push(newTouch);
-
-            let touchHandled = false;
 
             // Check if touch is on a button
             for (const button of this.buttons.values()) {
@@ -163,17 +193,22 @@ export class TouchHandler {
                     button.isPressed = true;
                     button.justPressed = true;
                     this.buttonTouchIds.set(touch.identifier, button.id);
-                    touchHandled = true;
-                    break;
+                    newTouch.isUITouch = true;
+                    continue; // A touch can only control one thing
                 }
             }
-            if (touchHandled) continue;
+            if (newTouch.isUITouch) continue;
 
-            // Check if touch is for joystick (left side)
-            if (pos.x < this.canvas.width / 2 && this.joystickTouchId === null) {
+            // Check if touch is for joystick (in defined zone)
+            const zone = this.joystickActivationZone;
+            if (this.joystickTouchId === null && 
+                pos.x > zone.x && pos.x < zone.x + zone.w &&
+                pos.y > zone.y && pos.y < zone.y + zone.h) 
+            {
                 this.joystickTouchId = touch.identifier;
                 this.joystickCenter = { ...pos };
                 this.joystickKnob = { ...pos };
+                newTouch.isUITouch = true;
             }
         }
     };

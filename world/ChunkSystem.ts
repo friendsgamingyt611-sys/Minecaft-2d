@@ -49,7 +49,7 @@ class Chunk {
 
 export class ChunkSystem {
   private chunks: Map<string, Chunk> = new Map();
-  private generator: WorldGenerator;
+  public generator: WorldGenerator;
 
   constructor(seed: string) {
     this.generator = new WorldGenerator(seed);
