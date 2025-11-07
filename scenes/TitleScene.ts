@@ -1,13 +1,15 @@
 
+
 import { Scene, SceneManager } from './SceneManager';
 import { SettingsScene } from './SettingsScene';
-import { WorldCreateScene } from './WorldCreateScene';
+import { WorldListScene } from './WorldListScene';
+import { SoundManager } from '../core/SoundManager';
 
 export class TitleScene implements Scene {
   private sceneManager: SceneManager;
   private buttons: { label: string; x: number; y: number; width: number; height: number; action: () => void }[] = [];
   private title = "Minecraft 2D";
-  private splashText = "Lighting & Physics!";
+  private splashText = "Now with Sound!";
   private hoveredButton: any = null;
   private cloudOffset: number = 0;
   
@@ -32,7 +34,10 @@ export class TitleScene implements Scene {
             y: startY,
             width: buttonWidth,
             height: buttonHeight,
-            action: () => this.sceneManager.pushScene(new WorldCreateScene(this.sceneManager))
+            action: () => {
+                SoundManager.instance.playSound('ui.click');
+                this.sceneManager.pushScene(new WorldListScene(this.sceneManager));
+            }
         },
         {
             label: "Settings",
@@ -40,9 +45,13 @@ export class TitleScene implements Scene {
             y: startY + buttonHeight + spacing,
             width: buttonWidth,
             height: buttonHeight,
-            action: () => this.sceneManager.pushScene(new SettingsScene(this.sceneManager))
+            action: () => {
+                SoundManager.instance.playSound('ui.click');
+                this.sceneManager.pushScene(new SettingsScene(this.sceneManager));
+            }
         }
     ];
+    SoundManager.instance.playMusic('calm1');
   }
   
   exit(): void {}

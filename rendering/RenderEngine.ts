@@ -133,8 +133,8 @@ export class RenderEngine {
             const neighborBlockId = world.getBlock(nx, ny);
             const neighborType = getBlockType(neighborBlockId);
 
-            // Light can only spread through air and other non-solid blocks
-            if ((!neighborType || !neighborType.isSolid) && !this.lightMap.has(neighborKey)) {
+            // Light can only spread through air and other non-solid or light-transparent blocks
+            if ((!neighborType || !neighborType.isSolid || neighborType.isLightTransparent) && !this.lightMap.has(neighborKey)) {
                 this.lightMap.set(neighborKey, curr.dist + 1);
                 queue.push({x: nx, y: ny, dist: curr.dist + 1});
             }
@@ -178,26 +178,33 @@ export class RenderEngine {
 
         this.blockRenderer.render(ctx, blockId, x * BLOCK_SIZE, y * BLOCK_SIZE);
         
-        if (blockType.isSolid) {
-            let minNeighborDist = Infinity;
+        const lightKey = blockType.isLightTransparent ? key : null;
+        let minNeighborDist = Infinity;
+
+        if (lightKey && this.lightMap.has(lightKey)) {
+             minNeighborDist = this.lightMap.get(lightKey)!;
+        } else if (blockType.isSolid && !blockType.isLightTransparent) {
             for (const offset of [{dx:0, dy:1}, {dx:0, dy:-1}, {dx:1, dy:0}, {dx:-1, dy:0}]) {
                 const neighborKey = `${x + offset.dx},${y + offset.dy}`;
                 if (this.lightMap.has(neighborKey)) {
                     minNeighborDist = Math.min(minNeighborDist, this.lightMap.get(neighborKey)!);
                 }
             }
+        } else {
+             minNeighborDist = 0; // Don't darken transparent blocks themselves
+        }
 
-            if (minNeighborDist === Infinity) {
-                // Block is not adjacent to any lit air, so it's fully dark.
-                ctx.fillStyle = 'rgba(0,0,0,0.95)';
+
+        if (minNeighborDist === Infinity) {
+            // Block is not adjacent to any lit air, so it's fully dark.
+            ctx.fillStyle = 'rgba(0,0,0,0.95)';
+            ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+        } else {
+            // The light level of the block is based on the distance of the nearest lit air.
+            const alpha = Math.min(0.95, (minNeighborDist / this.MAX_LIGHT_DISTANCE) * 1.0);
+            if (alpha > 0.01) {
+                ctx.fillStyle = `rgba(0,0,0,${alpha})`;
                 ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-            } else {
-                // The light level of the block is based on the distance of the nearest lit air.
-                const alpha = Math.min(0.95, (minNeighborDist / this.MAX_LIGHT_DISTANCE) * 1.0);
-                if (alpha > 0.01) {
-                    ctx.fillStyle = `rgba(0,0,0,${alpha})`;
-                    ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-                }
             }
         }
       }

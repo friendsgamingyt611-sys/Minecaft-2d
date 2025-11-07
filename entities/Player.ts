@@ -1,4 +1,4 @@
-import { Vector2, BlockId, Particle, Item, ItemId, GameMode, InputState, BlockType } from '../types';
+import { Vector2, BlockId, Particle, Item, ItemId, GameMode, InputState, BlockType, PlayerData, WorldData } from '../types';
 import { ChunkSystem } from '../world/ChunkSystem';
 import { 
     PLAYER_MOVE_SPEED, GRAVITY, PLAYER_JUMP_FORCE, PLAYER_FRICTION,
@@ -6,7 +6,7 @@ import {
     PARTICLE_COUNT, PARTICLE_LIFESPAN, MAX_HEALTH, MAX_HUNGER, FALL_DAMAGE_START_BLOCKS,
     PLAYER_SPRINT_SPEED, PLAYER_SNEAK_SPEED, PLAYER_SNEAK_HEIGHT,
     TOOL_EFFECTIVENESS_MULTIPLIER, INCORRECT_TOOL_PENALTY, INVENTORY_SLOTS,
-    ITEM_PICKUP_RADIUS, TOOL_TIER_SPEED_MAP, HOTBAR_SLOT_SIZE
+    ITEM_PICKUP_RADIUS, TOOL_TIER_SPEED_MAP
 } from '../core/Constants';
 import { PhysicsSystem } from './PhysicsSystem';
 import { getBlockType } from '../world/BlockRegistry';
@@ -18,16 +18,21 @@ import { MouseHandler } from '../input/MouseHandler';
 import { SettingsManager } from '../core/SettingsManager';
 import { TouchHandler } from '../input/TouchHandler';
 import { XPSystem } from '../world/XPSystem';
+import { SoundManager } from '../core/SoundManager';
+import { InputManager } from '../input/InputManager';
 
 export class Player {
   public position: Vector2;
   private spawnPoint: Vector2;
   public velocity: Vector2 = { x: 0, y: 0 };
+  // FIX: Added particles array to player to fix rendering error.
+  public particles: Particle[] = [];
   
   public facingDirection: number = 1; // 1 for right, -1 for left
   
   private mouseHandler: MouseHandler;
   private touchHandler: TouchHandler;
+  private inputManager: InputManager;
   public world: ChunkSystem;
   private physics: PhysicsSystem;
   public onGround: boolean = false;
@@ -35,16 +40,18 @@ export class Player {
   public justLanded: boolean = false;
   
   public inventory: Inventory;
-  public armorInventory: Inventory; // Not used yet
+  public armorInventory: Inventory;
   
   public activeHotbarSlot: number = 0;
-  public particles: Particle[] = [];
 
   public health: number = MAX_HEALTH;
   public hunger: number = MAX_HUNGER;
   public isDead: boolean = false;
+  public causeOfDeath: string = "Player died";
+  public justTookDamage: boolean = false;
   private timeSinceHungerTick: number = 0;
   private timeSinceHealthRegen: number = 0;
+  private timeSinceStarveDamage: number = 0;
 
   public animationState: string = 'idle';
   public isSprinting: boolean = false;
@@ -65,25 +72,22 @@ export class Player {
   public isFlying: boolean = false;
   private lastJumpPressTime: number = 0;
 
-  public headRotation: number = 0;
   public eyeOffset: Vector2 = { x: 0, y: 0 };
-  
-  // Blinking properties
   public isBlinking: boolean = false;
-  private blinkCountdown: number = 3 + Math.random() * 4; // Time until next blink
+  private blinkCountdown: number = 3 + Math.random() * 4;
   private blinkDurationTimer: number = 0;
-  private readonly BLINK_DURATION = 0.15; // 150ms
+  private readonly BLINK_DURATION = 0.15;
 
-  // XP System
   public experience: number = 0;
   public level: number = 0;
   public xpSystem: XPSystem;
 
-  constructor(spawnPoint: Vector2, world: ChunkSystem, mouseHandler: MouseHandler, touchHandler: TouchHandler, physics: PhysicsSystem, actionCallback: (action: string, data: any) => void) {
+  constructor(spawnPoint: Vector2, world: ChunkSystem, mouseHandler: MouseHandler, touchHandler: TouchHandler, inputManager: InputManager, physics: PhysicsSystem, actionCallback: (action: string, data: any) => void) {
     this.position = { ...spawnPoint };
     this.spawnPoint = { ...spawnPoint };
     this.mouseHandler = mouseHandler;
     this.touchHandler = touchHandler;
+    this.inputManager = inputManager;
     this.world = world;
     this.physics = physics;
     this.inventory = new Inventory(INVENTORY_SLOTS);
@@ -94,24 +98,45 @@ export class Player {
   }
 
   private initializeInventory() {
-    this.inventory.setItem(0, {id: ItemId.WOODEN_AXE, count: 1});
-    this.inventory.setItem(1, {id: ItemId.WOODEN_PICKAXE, count: 1});
-    this.inventory.setItem(2, {id: ItemId.WOODEN_SHOVEL, count: 1});
+    // this.inventory.setItem(0, {id: ItemId.WOODEN_AXE, count: 1});
+    // this.inventory.setItem(1, {id: ItemId.WOODEN_PICKAXE, count: 1});
+    // this.inventory.setItem(2, {id: ItemId.WOODEN_SHOVEL, count: 1});
   }
   
   public get width(): number { return PLAYER_WIDTH; }
   public get height(): number { return this.isSneaking ? PLAYER_SNEAK_HEIGHT : PLAYER_HEIGHT; }
 
   update(deltaTime: number, camera: Camera, inputState: InputState): void {
-    if (this.isDead) return;
+    if (this.isDead) {
+        this.animationState = 'dying';
+        return;
+    };
 
-    if (this.placementAnimTimer > 0) {
-      this.placementAnimTimer -= deltaTime;
+    if (this.gamemode === 'spectator') {
+        this.handleInput(inputState);
+        this.position.x += this.velocity.x;
+        this.position.y += this.velocity.y;
+        this.updateAnimationState(inputState);
+        this.updateBlinking(deltaTime);
+        this.updateEyeAndHeadDirection();
+        return;
     }
 
+    // FIX: Update particles
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+        const p = this.particles[i];
+        p.life -= 60 * deltaTime;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.2; // A bit of gravity
+        if (p.life <= 0) {
+            this.particles.splice(i, 1);
+        }
+    }
+
+    if (this.placementAnimTimer > 0) this.placementAnimTimer -= deltaTime;
     this.updateTargeting(camera);
     this.handleInput(inputState);
-    
     if (this.gamemode === 'creative' && this.isFlying) {
         this.position.x += this.velocity.x;
         this.position.y += this.velocity.y;
@@ -121,31 +146,24 @@ export class Player {
         this.physics.applyFriction(this);
         this.physics.updatePositionAndCollision(this);
     }
-    
     this.handleFallDamage();
     this.handleBlockInteraction(inputState, camera);
-    this.updateParticles();
     this.updateVitals(deltaTime);
     this.updateAnimationState(inputState);
     this.updateBlinking(deltaTime);
     this.updateEyeAndHeadDirection();
 
     const collectedXP = this.xpSystem.update(deltaTime, {x: this.position.x + this.width / 2, y: this.position.y + this.height / 2});
-    if(collectedXP > 0) {
-        this.addXP(collectedXP);
-    }
+    if(collectedXP > 0) this.addXP(collectedXP);
   }
   
   public addXP(amount: number): void {
     if (this.gamemode !== 'survival') return;
     this.experience += amount;
-    
     let requiredXP = this.getRequiredXPForLevel(this.level);
-    
     while (this.experience >= requiredXP) {
       this.level++;
       this.experience -= requiredXP;
-      // TODO: Play level-up sound/effect here
       requiredXP = this.getRequiredXPForLevel(this.level);
     }
   }
@@ -159,7 +177,6 @@ export class Player {
   private updateEyeAndHeadDirection(): void {
     let targetEyeX = 0;
     let targetEyeY = 0;
-    
     if (this.targetBlock) {
         const targetWorldX = (this.targetBlock.x + 0.5) * BLOCK_SIZE;
         const playerWorldX = this.position.x + this.width / 2;
@@ -171,11 +188,8 @@ export class Player {
     } else {
         targetEyeX = this.facingDirection * 0.4;
     }
-
-    // Clamp and smooth
     targetEyeX = Math.max(-0.5, Math.min(0.5, targetEyeX));
     targetEyeY = Math.max(-0.4, Math.min(0.4, targetEyeY));
-    
     this.eyeOffset.x += (targetEyeX - this.eyeOffset.x) * 0.15;
     this.eyeOffset.y += (targetEyeY - this.eyeOffset.y) * 0.15;
   }
@@ -187,22 +201,20 @@ export class Player {
     this.isDead = false;
     this.velocity = { x: 0, y: 0 };
     this.fallDistance = 0;
+    this.inventory.clear();
+    this.initializeInventory();
   }
 
   public tryPickupItem(entity: ItemEntity): void {
+    if (this.gamemode === 'spectator') return;
     if (!entity.canBePickedUp()) return;
-
     const dx = (this.position.x + this.width / 2) - (entity.position.x + entity.width / 2);
     const dy = (this.position.y + this.height / 2) - (entity.position.y + entity.height / 2);
     const distance = Math.sqrt(dx * dx + dy * dy);
-
     if (distance < ITEM_PICKUP_RADIUS) {
         const remainingItem = this.inventory.addItem(entity.item);
-        if (remainingItem === null) {
-            entity.collect();
-        } else {
-            entity.item.count = remainingItem.count;
-        }
+        if (remainingItem === null) entity.collect();
+        else entity.item.count = remainingItem.count;
     }
   }
 
@@ -212,101 +224,74 @@ export class Player {
         if (this.blinkDurationTimer >= this.BLINK_DURATION) {
             this.isBlinking = false;
             this.blinkDurationTimer = 0;
-            this.blinkCountdown = 2 + Math.random() * 5; // Reset countdown for next blink
+            this.blinkCountdown = 2 + Math.random() * 5;
         }
     } else {
         this.blinkCountdown -= deltaTime;
-        if (this.blinkCountdown <= 0) {
-            this.isBlinking = true;
-        }
+        if (this.blinkCountdown <= 0) this.isBlinking = true;
     }
   }
 
   public checkLineOfSight(targetBlock: {x: number, y: number}): boolean {
     const startX = this.position.x + this.width / 2;
-    const startY = this.position.y + this.height * 0.2; // Eye level
+    const startY = this.position.y + this.height * 0.2;
     const endX = (targetBlock.x + 0.5) * BLOCK_SIZE;
     const endY = (targetBlock.y + 0.5) * BLOCK_SIZE;
-
     const dx = endX - startX;
     const dy = endY - startY;
     const distance = Math.sqrt(dx * dx + dy * dy);
-    // Step roughly every half a block
     const steps = Math.ceil(distance / (BLOCK_SIZE / 2)); 
-
     if (steps <= 1) return true;
-
     const xInc = dx / steps;
     const yInc = dy / steps;
-
     let currentX = startX;
     let currentY = startY;
-
     for (let i = 1; i < steps; i++) {
         currentX += xInc;
         currentY += yInc;
         const blockX = Math.floor(currentX / BLOCK_SIZE);
         const blockY = Math.floor(currentY / BLOCK_SIZE);
-
-        // Don't check collision with the target block itself
         if (blockX === targetBlock.x && blockY === targetBlock.y) continue;
-
-        const block = this.world.getBlock(blockX, blockY);
-        const blockType = getBlockType(block);
-        if (blockType && blockType.isSolid) {
-            return false; // Obstruction found
-        }
+        const blockType = getBlockType(this.world.getBlock(blockX, blockY));
+        if (blockType && blockType.isSolid) return false;
     }
     return true;
   }
 
   private updateTargeting(camera: Camera): void {
       const controlScheme = SettingsManager.instance.getEffectiveControlScheme();
-  
       if (controlScheme === 'keyboard') {
-          // Continuous targeting for mouse
           const worldPos = camera.screenToWorld(this.mouseHandler.position);
           const blockX = Math.floor(worldPos.x / BLOCK_SIZE);
           const blockY = Math.floor(worldPos.y / BLOCK_SIZE);
-  
           const playerCenterX = this.position.x + this.width / 2;
           const playerCenterY = this.position.y + this.height / 2;
           const blockCenterX = (blockX + 0.5) * BLOCK_SIZE;
           const blockCenterY = (blockY + 0.5) * BLOCK_SIZE;
-  
           const dx = playerCenterX - blockCenterX;
           const dy = playerCenterY - blockCenterY;
           const distance = Math.sqrt(dx * dx + dy * dy);
-          
           const candidateTarget = { x: blockX, y: blockY };
-  
-          if (distance <= REACH_DISTANCE && this.checkLineOfSight(candidateTarget)) {
-              this.targetBlock = candidateTarget;
-          } else {
-              this.targetBlock = null;
-          }
-      } else { // 'touch' - Event-based "sticky" targeting
+          if (distance <= REACH_DISTANCE && this.checkLineOfSight(candidateTarget)) this.targetBlock = candidateTarget;
+          else this.targetBlock = null;
+      } else {
           const interactionTapPos = this.touchHandler.getInteractionTap();
           if (interactionTapPos) {
               const worldPos = camera.screenToWorld(interactionTapPos);
-              
               const blockX = Math.floor(worldPos.x / BLOCK_SIZE);
               const blockY = Math.floor(worldPos.y / BLOCK_SIZE);
-  
               const playerCenterX = this.position.x + this.width / 2;
               const playerCenterY = this.position.y + this.height / 2;
               const blockCenterX = (blockX + 0.5) * BLOCK_SIZE;
               const blockCenterY = (blockY + 0.5) * BLOCK_SIZE;
-  
               const dx = playerCenterX - blockCenterX;
               const dy = playerCenterY - blockCenterY;
               const distance = Math.sqrt(dx * dx + dy * dy);
-              
               const tappedBlockType = getBlockType(this.world.getBlock(blockX, blockY));
               let canTarget = false;
               if (tappedBlockType && tappedBlockType.isSolid) {
                   canTarget = true;
-              } else { // It's air or non-solid, check for adjacent solid blocks
+              } else {
                   const neighbors = [{x:0, y:1}, {x:0, y:-1}, {x:1, y:0}, {x:-1, y:0}];
                   for (const n of neighbors) {
                       const neighborType = getBlockType(this.world.getBlock(blockX + n.x, blockY + n.y));
@@ -316,20 +301,15 @@ export class Player {
                       }
                   }
               }
-
-              if (distance <= REACH_DISTANCE && canTarget && this.checkLineOfSight({ x: blockX, y: blockY })) {
-                  this.targetBlock = { x: blockX, y: blockY };
-              } else {
-                  this.targetBlock = null;
-              }
+              if (distance <= REACH_DISTANCE && canTarget && this.checkLineOfSight({ x: blockX, y: blockY })) this.targetBlock = { x: blockX, y: blockY };
+              else this.targetBlock = null;
           }
       }
   }
 
   private handleInput(inputState: InputState): void {
     const speed = this.isSneaking ? PLAYER_SNEAK_SPEED : (this.isSprinting ? PLAYER_SPRINT_SPEED : PLAYER_MOVE_SPEED);
-    
-    if (this.gamemode === 'creative' && this.isFlying) {
+    if ((this.gamemode === 'creative' && this.isFlying) || this.gamemode === 'spectator') {
       this.velocity.x = inputState.moveX * speed;
       this.velocity.y = 0;
       if (inputState.jump.pressed) this.velocity.y = -speed;
@@ -338,16 +318,25 @@ export class Player {
       this.velocity.x = inputState.moveX * speed;
     }
 
-    if (inputState.moveX !== 0) {
-      this.facingDirection = Math.sign(inputState.moveX);
-    }
+    if (inputState.moveX !== 0) this.facingDirection = Math.sign(inputState.moveX);
     
+    // FIX: Restore hotbar scrolling via mouse wheel.
+    const scrollDelta = this.mouseHandler.consumeScroll();
+    if (scrollDelta !== 0) {
+        this.activeHotbarSlot = (this.activeHotbarSlot + scrollDelta + HOTBAR_SLOTS) % HOTBAR_SLOTS;
+    }
+
+    // Add hotbar selection with number keys
+    for (let i = 1; i <= 9; i++) {
+        if (this.inputManager.isKeyPressed(i.toString())) {
+            this.activeHotbarSlot = i - 1;
+        }
+    }
+
     if (inputState.jump.justPressed) {
       if (this.gamemode === 'creative') {
         const now = Date.now();
-        if (now - this.lastJumpPressTime < 300) { // Double tap for flight
-          this.isFlying = !this.isFlying;
-        }
+        if (now - this.lastJumpPressTime < 300) this.isFlying = !this.isFlying;
         this.lastJumpPressTime = now;
       }
       if (this.onGround) {
@@ -357,55 +346,95 @@ export class Player {
         this.fallDistance = 0;
       }
     }
-
     this.isSneaking = inputState.sneak;
     this.isSprinting = inputState.sprint && !this.isSneaking && inputState.moveX !== 0 && this.onGround;
+    if (inputState.inventory) this.actionCallback('openInventory', {});
 
-    if (inputState.inventory) {
-      this.actionCallback('openInventory', {});
+    if (inputState.drop) {
+        this.dropSelectedItem();
     }
+  }
+
+  private dropSelectedItem(): void {
+    const heldItem = this.inventory.getItem(this.activeHotbarSlot);
+    if (!heldItem) return;
+
+    const droppedItem: Item = { id: heldItem.id, count: 1 };
+    
+    // In creative mode, a copy is dropped without removing from inventory.
+    if (this.gamemode !== 'creative') {
+        this.inventory.removeItem(this.activeHotbarSlot, 1);
+    }
+
+    this.actionCallback('dropItem', { 
+        item: droppedItem,
+        position: {
+            x: this.position.x + this.width / 2,
+            y: this.position.y + this.height * 0.4 // Drop from near shoulder height
+        },
+        velocity: {
+            x: this.facingDirection * 6,
+            y: -6
+        }
+    });
   }
 
   private handleFallDamage(): void {
     if (this.velocity.y > 0 && !this.onGround) {
-      this.fallDistance += this.velocity.y;
+        this.fallDistance += this.velocity.y;
     }
 
     if (this.justLanded) {
       const fallBlocks = this.fallDistance / BLOCK_SIZE;
-      if (fallBlocks > FALL_DAMAGE_START_BLOCKS) {
-        const damage = Math.floor(fallBlocks - FALL_DAMAGE_START_BLOCKS + 1);
-        this.takeDamage(damage);
+      
+      // Player takes damage for falls of 4 blocks or more (i.e., more than 3 blocks).
+      if (fallBlocks >= FALL_DAMAGE_START_BLOCKS) {
+        // Damage is 1 for every block past 3 blocks.
+        const damage = Math.floor(fallBlocks - (FALL_DAMAGE_START_BLOCKS - 1));
+        if (damage > 0) {
+            this.takeDamage(damage, "Player fell from a high place");
+        }
       }
+      
       this.fallDistance = 0;
       this.justLanded = false;
     }
-
+    
+    // Also reset fall distance if on ground and not moving vertically.
     if (this.onGround && this.velocity.y === 0) {
-      this.fallDistance = 0;
+        this.fallDistance = 0;
     }
   }
   
-  public takeDamage(amount: number): void {
-    if (this.gamemode === 'creative') return;
+  public takeDamage(amount: number, cause: string): void {
+    if (this.gamemode === 'creative' || this.isDead || this.gamemode === 'spectator') return;
     this.health -= amount;
+    this.justTookDamage = true;
+    SoundManager.instance.playSound('player.hurt');
     if (this.health <= 0) {
       this.health = 0;
+      this.causeOfDeath = cause;
       this.die();
     }
   }
   
   private die(): void {
     this.isDead = true;
+    SoundManager.instance.playSound('player.death');
   }
   
   private handleBlockInteraction(inputState: InputState, camera: Camera): void {
+    if (this.gamemode === 'spectator') {
+        this.breakingBlock = null;
+        this.isMining = false;
+        return;
+    }
+
     if (!this.targetBlock || !this.checkLineOfSight(this.targetBlock)) {
       this.breakingBlock = null;
       this.isMining = false;
       return;
     }
-
     const { x: blockX, y: blockY } = this.targetBlock;
     const blockId = this.world.getBlock(blockX, blockY);
     const blockType = getBlockType(blockId);
@@ -417,19 +446,28 @@ export class Player {
       } else {
         this.breakingBlock = { x: blockX, y: blockY, progress: this.getMiningSpeed(blockType) };
       }
-
       if (this.breakingBlock.progress >= blockType.hardness) {
-        let drop = blockType.itemDrop;
+        // FIX: Create particles when block is broken
+        if (blockType.id !== BlockId.AIR) {
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            this.particles.push({
+              x: (blockX + 0.5) * BLOCK_SIZE,
+              y: (blockY + 0.5) * BLOCK_SIZE,
+              vx: (Math.random() - 0.5) * 5,
+              vy: (Math.random() - 0.5) * 5 - 3,
+              life: PARTICLE_LIFESPAN,
+              color: blockType.color,
+              size: Math.random() * 4 + 2,
+            });
+          }
+        }
 
+        let drop = blockType.itemDrop;
         if (blockType.id === BlockId.STONE) {
             const heldItem = this.inventory.getItem(this.activeHotbarSlot);
             const itemInfo = heldItem ? CraftingSystem.getItemInfo(heldItem.id) : null;
-            const toolInfo = itemInfo ? itemInfo.toolInfo : null;
-            if (toolInfo?.type !== 'pickaxe') {
-                drop = undefined; // Drop nothing if not mined with a pickaxe
-            }
+            if (itemInfo?.toolInfo?.type !== 'pickaxe') drop = undefined;
         }
-        
         this.world.setBlock(blockX, blockY, BlockId.AIR);
         if (drop && this.gamemode === 'survival') {
           const count = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
@@ -450,9 +488,7 @@ export class Player {
       }
       if (blockId === BlockId.CHEST) {
         const chestInventory = this.world.getChestInventory(blockX, blockY);
-        if (chestInventory) {
-          this.actionCallback('openChest', { chestInventory });
-        }
+        if (chestInventory) this.actionCallback('openChest', { chestInventory });
         return;
       }
 
@@ -461,45 +497,29 @@ export class Player {
         const itemInfo = CraftingSystem.getItemInfo(heldItem.id);
         if (itemInfo && itemInfo.blockId) {
           let placeX: number, placeY: number;
-          const targetIsSolid = blockType && blockType.isSolid;
-
-          if (!targetIsSolid) {
-              // Target is an air block, place directly into it
+          if (!(blockType && blockType.isSolid)) {
               placeX = blockX;
               placeY = blockY;
           } else {
-              // Target is a solid block, place adjacent to it
-              const controlScheme = SettingsManager.instance.getEffectiveControlScheme();
-              if (controlScheme === 'keyboard') {
+              if (SettingsManager.instance.getEffectiveControlScheme() === 'keyboard') {
                   const worldPos = camera.screenToWorld(this.mouseHandler.position);
-                  const targetBlockCenterX = (blockX + 0.5) * BLOCK_SIZE;
-                  const targetBlockCenterY = (blockY + 0.5) * BLOCK_SIZE;
-                  const deltaX = worldPos.x - targetBlockCenterX;
-                  const deltaY = worldPos.y - targetBlockCenterY;
-
-                  if (Math.abs(deltaX) > Math.abs(deltaY)) {
-                      placeX = blockX + (deltaX > 0 ? 1 : -1);
-                      placeY = blockY;
+                  const dX = worldPos.x - (blockX + 0.5) * BLOCK_SIZE;
+                  const dY = worldPos.y - (blockY + 0.5) * BLOCK_SIZE;
+                  if (Math.abs(dX) > Math.abs(dY)) {
+                      placeX = blockX + (dX > 0 ? 1 : -1); placeY = blockY;
                   } else {
-                      placeX = blockX;
-                      placeY = blockY + (deltaY > 0 ? 1 : -1);
+                      placeX = blockX; placeY = blockY + (dY > 0 ? 1 : -1);
                   }
-              } else { // Touch
-                  const playerCenter = { x: this.position.x + this.width / 2, y: this.position.y + this.height / 2 };
-                  const targetCenter = { x: (blockX + 0.5) * BLOCK_SIZE, y: (blockY + 0.5) * BLOCK_SIZE };
-                  const dx = playerCenter.x - targetCenter.x;
-                  const dy = playerCenter.y - targetCenter.y;
-                  
-                  if (Math.abs(dx) > Math.abs(dy)) {
-                      placeX = blockX + (dx > 0 ? -1 : 1);
-                      placeY = blockY;
+              } else {
+                  const dX = (this.position.x + this.width / 2) - (blockX + 0.5) * BLOCK_SIZE;
+                  const dY = (this.position.y + this.height / 2) - (blockY + 0.5) * BLOCK_SIZE;
+                  if (Math.abs(dX) > Math.abs(dY)) {
+                      placeX = blockX + (dX > 0 ? -1 : 1); placeY = blockY;
                   } else {
-                      placeX = blockX;
-                      placeY = blockY + (dy > 0 ? -1 : 1);
+                      placeX = blockX; placeY = blockY + (dY > 0 ? -1 : 1);
                   }
               }
           }
-          
           const blockAtPlacePos = getBlockType(this.world.getBlock(placeX, placeY));
           if(blockAtPlacePos && !blockAtPlacePos.isSolid) {
               const playerRect = {x: this.position.x, y: this.position.y, width: this.width, height: this.height};
@@ -507,7 +527,8 @@ export class Player {
               if(!this.physics.checkAABBCollision(playerRect, newBlockRect)) {
                 this.world.setBlock(placeX, placeY, itemInfo.blockId);
                 if (this.gamemode === 'survival') this.inventory.removeItem(this.activeHotbarSlot, 1);
-                this.placementAnimTimer = 0.3; // 300ms animation
+                this.placementAnimTimer = 0.3;
+                this.actionCallback('placeBlock', { blockType: getBlockType(itemInfo.blockId) });
               }
           }
         }
@@ -517,54 +538,30 @@ export class Player {
 
   private getMiningSpeed(blockType: BlockType): number {
     if (this.gamemode === 'creative') return Infinity;
-
     const heldItem = this.inventory.getItem(this.activeHotbarSlot);
     const itemInfo = heldItem ? CraftingSystem.getItemInfo(heldItem.id) : null;
     const toolInfo = itemInfo ? itemInfo.toolInfo : null;
-    
     let speed = 1;
     let canMine = true;
-
     if (blockType.minToolTier) {
       const tiers = ['none', 'wood', 'stone', 'iron', 'diamond'];
       const requiredTierIndex = tiers.indexOf(blockType.minToolTier);
       const currentTierIndex = toolInfo ? tiers.indexOf(toolInfo.tier) : 0;
-      if (currentTierIndex < requiredTierIndex) {
-        canMine = false;
-      }
+      if (currentTierIndex < requiredTierIndex) canMine = false;
     }
-    
-    if (!canMine) return 0.3; // Very slow if wrong tier
-
-    if (toolInfo && toolInfo.type === blockType.toolType) {
-        speed *= TOOL_TIER_SPEED_MAP[toolInfo.tier];
-    } else if (blockType.toolType) {
-        speed *= INCORRECT_TOOL_PENALTY;
-    }
-    
+    if (!canMine) return 0.3;
+    if (toolInfo && toolInfo.type === blockType.toolType) speed *= TOOL_TIER_SPEED_MAP[toolInfo.tier];
+    else if (blockType.toolType) speed *= INCORRECT_TOOL_PENALTY;
     return speed * TOOL_EFFECTIVENESS_MULTIPLIER;
   }
 
-  private updateParticles(): void {
-    for (let i = this.particles.length - 1; i >= 0; i--) {
-      const p = this.particles[i];
-      p.life--;
-      if (p.life <= 0) {
-        this.particles.splice(i, 1);
-      } else {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.1;
-      }
-    }
-  }
-
   private updateVitals(deltaTime: number): void {
-    if (this.gamemode === 'creative') return;
+    if (this.gamemode === 'creative' || this.gamemode === 'spectator') return;
 
     this.timeSinceHungerTick += deltaTime;
     if (this.timeSinceHungerTick > 20) {
       this.timeSinceHungerTick = 0;
+      // TODO: Add saturation and exhaustion
       if (this.hunger > 0) this.hunger--;
     }
     
@@ -574,22 +571,31 @@ export class Player {
         this.timeSinceHealthRegen = 0;
         this.health++;
       }
+    } else {
+        this.timeSinceHealthRegen = 0;
     }
     
     if (this.hunger <= 0) {
-      this.timeSinceHealthRegen += deltaTime;
-      if (this.timeSinceHealthRegen > 2) {
-        this.timeSinceHealthRegen = 0;
-        this.takeDamage(1);
+      this.timeSinceStarveDamage += deltaTime;
+      if (this.timeSinceStarveDamage > 4) {
+        this.timeSinceStarveDamage = 0;
+        this.takeDamage(1, "Player starved to death");
       }
+    } else {
+        this.timeSinceStarveDamage = 0;
     }
   }
 
   private updateAnimationState(inputState: InputState): void {
-    if (this.isMining) {
+    if (this.gamemode === 'spectator') {
+        this.animationState = 'idle';
+        return;
+    }
+    if(this.justTookDamage) {
+        this.animationState = 'hurt';
+    } else if (this.isMining) {
       this.animationState = 'mining';
     } else if (!this.onGround && !this.isFlying) {
-      // Differentiate between rising and falling
       this.animationState = this.velocity.y < 0 ? 'jumping' : 'falling';
     } else if (this.isSneaking) {
       this.animationState = 'sneaking';
@@ -598,5 +604,27 @@ export class Player {
     } else {
       this.animationState = 'idle';
     }
+  }
+
+  public toData(): PlayerData {
+      return {
+          position: this.position,
+          health: this.health,
+          hunger: this.hunger,
+          level: this.level,
+          experience: this.experience,
+          inventory: this.inventory.toData(),
+          armorInventory: this.armorInventory.toData(),
+      };
+  }
+
+  public fromData(data: PlayerData) {
+      this.position = data.position;
+      this.health = data.health;
+      this.hunger = data.hunger;
+      this.level = data.level;
+      this.experience = data.experience;
+      this.inventory.fromData(data.inventory);
+      this.armorInventory.fromData(data.armorInventory);
   }
 }

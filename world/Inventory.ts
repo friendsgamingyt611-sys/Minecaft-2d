@@ -1,5 +1,6 @@
 
-import { Item, ItemId } from '../types';
+
+import { Item, ItemId, InventoryData } from '../types';
 import { CraftingSystem } from '../crafting/CraftingSystem';
 
 export class Inventory {
@@ -33,11 +34,6 @@ export class Inventory {
         this.items.fill(null);
     }
 
-    /**
-     * Adds an item to the inventory, stacking if possible.
-     * @param item The item to add.
-     * @returns The remaining item if inventory is full, otherwise null.
-     */
     public addItem(item: Item): Item | null {
         const itemInfo = CraftingSystem.getItemInfo(item.id);
         const maxStackSize = itemInfo ? itemInfo.maxStackSize : 64;
@@ -65,12 +61,6 @@ export class Inventory {
         return item; // Return remaining items
     }
 
-    /**
-     * Removes a specific amount of an item from a slot.
-     * @param slot The slot to remove from.
-     * @param count The amount to remove.
-     * @returns True if successful, false otherwise.
-     */
     public removeItem(slot: number, count: number): boolean {
         const item = this.getItem(slot);
         if (!item) return false;
@@ -80,5 +70,15 @@ export class Inventory {
             this.items[slot] = null;
         }
         return true;
+    }
+    
+    public toData(): InventoryData {
+        return {
+            items: this.items
+        };
+    }
+
+    public fromData(data: InventoryData) {
+        this.items = data.items;
     }
 }

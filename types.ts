@@ -60,7 +60,7 @@ export enum ItemId {
 
 export type ToolType = 'pickaxe' | 'axe' | 'shovel' | 'sword' | 'hoe' | 'none';
 export type ToolTier = 'wood' | 'stone' | 'iron' | 'diamond' | 'none';
-export type GameMode = 'survival' | 'creative';
+export type GameMode = 'survival' | 'creative' | 'spectator';
 
 export interface Item {
     id: ItemId;
@@ -89,15 +89,19 @@ export interface BlockType {
   hardness: number; // Time to break in frames (60fps)
   isIndestructible?: boolean;
   texture?: (ctx: CanvasRenderingContext2D, x: number, y: number, size: number) => void;
+  isLightTransparent?: boolean;
   // V2.5 Additions
   itemDrop?: { itemId: ItemId; min: number; max: number; };
   toolType?: ToolType;
   minToolTier?: ToolTier;
   xpDrop?: { min: number; max: number; };
+  soundType?: 'stone' | 'wood' | 'dirt' | 'grass';
 }
 
 export interface GameStateOptions {
     worldSeed: string;
+    worldName: string;
+    gameMode: GameMode;
 }
 
 export interface Particle {
@@ -188,4 +192,41 @@ export interface XPOrb {
   value: number; // XP points
   lifetime: number;
   collected: boolean;
+}
+
+// V2.6 World Persistence
+export interface WorldMetadata {
+    name: string;
+    seed: string;
+    gameMode: GameMode;
+    timePlayed: number;
+    created: number;
+    lastPlayed: number;
+    spawnPoint: Vector2;
+}
+
+export interface InventoryData {
+    items: (Item | null)[];
+}
+
+export interface PlayerData {
+    position: Vector2;
+    health: number;
+    hunger: number;
+    level: number;
+    experience: number;
+    inventory: InventoryData;
+    armorInventory: InventoryData;
+}
+
+export interface ChunkData {
+    blocks: number[]; // Store as array for JSON serialization
+    blockEntities: [string, any][];
+}
+
+export interface WorldData {
+    metadata: WorldMetadata;
+    player: PlayerData;
+    chunks: [string, ChunkData][]; // Store as array of [key, value] pairs
+    version: string;
 }

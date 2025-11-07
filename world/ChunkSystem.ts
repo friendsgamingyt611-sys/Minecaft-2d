@@ -1,7 +1,6 @@
 
 
-import { BlockId, Vector2 } from '../types';
-// FIX: Import CHUNK_PIXEL_SIZE to calculate player's current chunk.
+import { BlockId, Vector2, ChunkData } from '../types';
 import { CHUNK_SIZE, BLOCK_SIZE, VIEW_DISTANCE_CHUNKS, CHUNK_PIXEL_SIZE, CHEST_SLOTS } from '../core/Constants';
 import { WorldGenerator } from './WorldGenerator';
 import { getBlockType } from './BlockRegistry';
@@ -12,6 +11,7 @@ class Chunk {
   public chunkX: number;
   public chunkY: number;
   public blockEntities: Map<string, any> = new Map();
+  public isModified: boolean = false;
 
   constructor(chunkX: number, chunkY: number) {
     this.chunkX = chunkX;
@@ -31,6 +31,7 @@ class Chunk {
       return;
     }
     this.blocks[localY * CHUNK_SIZE + localX] = blockId;
+    this.isModified = true;
     
     const key = `${localX},${localY}`;
     if (blockId === BlockId.CHEST) {
@@ -85,7 +86,6 @@ export class ChunkSystem {
     const chunkY = Math.floor(worldY / CHUNK_SIZE);
     const localX = worldX - chunkX * CHUNK_SIZE;
     const localY = worldY - chunkY * CHUNK_SIZE;
-    
     const chunk = this.getChunk(chunkX, chunkY);
     return chunk.getBlock(localX, localY);
   }
@@ -93,12 +93,10 @@ export class ChunkSystem {
   setBlock(worldX: number, worldY: number, blockId: BlockId): void {
     const blockType = getBlockType(this.getBlock(worldX, worldY));
     if (blockType?.isIndestructible) return;
-
     const chunkX = Math.floor(worldX / CHUNK_SIZE);
     const chunkY = Math.floor(worldY / CHUNK_SIZE);
     const localX = worldX - chunkX * CHUNK_SIZE;
     const localY = worldY - chunkY * CHUNK_SIZE;
-
     const chunk = this.getChunk(chunkX, chunkY);
     chunk.setBlock(localX, localY, blockId);
   }
@@ -131,5 +129,43 @@ export class ChunkSystem {
             this.chunks.delete(key);
         }
     }
+  }
+  
+  public toData(): [string, ChunkData][] {
+      const modifiedChunks: [string, ChunkData][] = [];
+      for (const [key, chunk] of this.chunks.entries()) {
+          if (chunk.isModified) {
+              // FIX: Explicitly type the return of the map to ensure it's a tuple [string, any], not (string | object)[].
+              const blockEntitiesData = Array.from(chunk.blockEntities.entries()).map(([posKey, entity]): [string, any] => {
+                  return [posKey, { inventory: entity.inventory.toData() }];
+              });
+
+              modifiedChunks.push([key, {
+                  blocks: Array.from(chunk.blocks),
+                  blockEntities: blockEntitiesData,
+              }]);
+          }
+      }
+      return modifiedChunks;
+  }
+
+  public fromData(data: [string, ChunkData][]) {
+      if (!data) return;
+      for (const [key, chunkData] of data) {
+          const [chunkX, chunkY] = key.split(',').map(Number);
+          const chunk = new Chunk(chunkX, chunkY);
+          chunk.blocks = new Uint8Array(chunkData.blocks);
+          chunk.isModified = true;
+
+          if (chunkData.blockEntities) {
+            chunkData.blockEntities.forEach(([posKey, entityData]) => {
+                const inventory = new Inventory(CHEST_SLOTS);
+                inventory.fromData(entityData.inventory);
+                chunk.blockEntities.set(posKey, { inventory });
+            });
+          }
+
+          this.chunks.set(key, chunk);
+      }
   }
 }

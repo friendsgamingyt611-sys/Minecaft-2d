@@ -6,6 +6,7 @@ import { InputManager } from '../input/InputManager';
 import { MouseHandler } from '../input/MouseHandler';
 import { SettingsManager } from './SettingsManager';
 import { TouchHandler } from '../input/TouchHandler';
+import { SoundManager } from './SoundManager';
 
 export class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -26,8 +27,9 @@ export class GameEngine {
     }
     this.ctx = context;
     
-    // Initialize settings first
+    // Initialize managers
     SettingsManager.instance.load();
+    SoundManager.instance.preloadSounds();
 
     this.inputManager = new InputManager();
     this.mouseHandler = new MouseHandler(this.canvas);

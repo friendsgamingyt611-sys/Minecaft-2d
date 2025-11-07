@@ -1,18 +1,18 @@
+
+
 import { Scene, SceneManager } from './SceneManager';
-import { GameScene } from './GameScene';
-import { GameState } from '../core/GameState';
+import { GameMode, Vector2, WorldData } from '../types';
 import { VirtualKeyboard } from '../input/VirtualKeyboard';
-import { Vector2 } from '../types';
+import { WorldStorage } from '../core/WorldStorage';
+import { SoundManager } from '../core/SoundManager';
+import { WorldLoadingScene } from './WorldLoadingScene';
 
 // --- UI Components for this Scene ---
-
 interface UIComponent {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
+    rect: {x: number, y: number, width: number, height: number};
     render(ctx: CanvasRenderingContext2D, isHovered: boolean, isActive: boolean): void;
     onClick?(): void;
+    cycle?(): void;
 }
 
 class InputBox implements UIComponent {
@@ -20,7 +20,7 @@ class InputBox implements UIComponent {
     private cursorVisible: boolean = true;
     private cursorTimer: number = 0;
     
-    constructor(public x: number, public y: number, public width: number, public height: number, public placeholder: string) {}
+    constructor(public rect: {x: number, y: number, width: number, height: number}, public placeholder: string) {}
     
     update(deltaTime: number) {
         this.cursorTimer += deltaTime;
@@ -34,8 +34,8 @@ class InputBox implements UIComponent {
         ctx.fillStyle = '#383838';
         ctx.strokeStyle = isActive ? '#ffffff' : '#000000';
         ctx.lineWidth = 4;
-        ctx.fillRect(this.x, this.y, this.width, this.height);
-        ctx.strokeRect(this.x, this.y, this.width, this.height);
+        ctx.fillRect(this.rect.x, this.rect.y, this.rect.width, this.rect.height);
+        ctx.strokeRect(this.rect.x, this.rect.y, this.rect.width, this.rect.height);
 
         ctx.font = "24px Minecraftia";
         ctx.textAlign = 'left';
@@ -43,62 +43,98 @@ class InputBox implements UIComponent {
         
         if (this.text) {
             ctx.fillStyle = '#ffffff';
-            ctx.fillText(this.text, this.x + 10, this.y + this.height / 2);
+            ctx.fillText(this.text, this.rect.x + 10, this.rect.y + this.rect.height / 2);
         } else if (!isActive) {
             ctx.fillStyle = '#a0a0a0';
-            ctx.fillText(this.placeholder, this.x + 10, this.y + this.height / 2);
+            ctx.fillText(this.placeholder, this.rect.x + 10, this.rect.y + this.rect.height / 2);
         }
         
         if (isActive && this.cursorVisible) {
             const textMetrics = ctx.measureText(this.text);
-            const cursorX = this.x + 10 + textMetrics.width;
+            const cursorX = this.rect.x + 10 + textMetrics.width;
             ctx.fillStyle = '#ffffff';
-            ctx.fillRect(cursorX, this.y + 8, 2, this.height - 16);
+            ctx.fillRect(cursorX, this.rect.y + 8, 2, this.rect.height - 16);
         }
     }
 }
 
 class Button implements UIComponent {
-    constructor(public x: number, public y: number, public width: number, public height: number, public label: string, public onClick: () => void) {}
+    constructor(public rect: {x: number, y: number, width: number, height: number}, public label: string, public onClick: () => void) {}
     
     render(ctx: CanvasRenderingContext2D, isHovered: boolean): void {
         ctx.fillStyle = isHovered ? '#a0a0a0' : '#7f7f7f';
         ctx.strokeStyle = '#383838';
         ctx.lineWidth = 4;
-        ctx.fillRect(this.x, this.y, this.width, this.height);
-        ctx.strokeRect(this.x, this.y, this.width, this.height);
+        ctx.fillRect(this.rect.x, this.rect.y, this.rect.width, this.rect.height);
+        ctx.strokeRect(this.rect.x, this.rect.y, this.rect.width, this.rect.height);
 
         ctx.font = "30px Minecraftia";
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(this.label, this.x + this.width / 2, this.y + this.height / 2);
+        ctx.fillText(this.label, this.rect.x + this.rect.width / 2, this.rect.y + this.rect.height / 2);
     }
 }
 
-// --- WorldCreateScene Implementation ---
+class Dropdown implements UIComponent {
+    constructor(public rect: {x: number, y: number, width: number, height: number}, public label: string, public options: string[], public getValue: () => string, public cycle: () => void) {}
+    onClick = () => this.cycle();
 
+    render(ctx: CanvasRenderingContext2D, isHovered: boolean): void {
+        const fullLabel = `${this.label}: < ${this.getValue()} >`;
+        // Re-use button rendering logic
+        ctx.fillStyle = isHovered ? '#a0a0a0' : '#7f7f7f';
+        ctx.strokeStyle = '#383838';
+        ctx.lineWidth = 4;
+        ctx.fillRect(this.rect.x, this.rect.y, this.rect.width, this.rect.height);
+        ctx.strokeRect(this.rect.x, this.rect.y, this.rect.width, this.rect.height);
+
+        ctx.font = "24px Minecraftia";
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(fullLabel, this.rect.x + this.rect.width / 2, this.rect.y + this.rect.height / 2);
+    }
+}
+
+
+// --- WorldCreateScene Implementation ---
 export class WorldCreateScene implements Scene {
     private sceneManager: SceneManager;
     private worldNameInput: InputBox;
     private worldSeedInput: InputBox;
+    private gamemodeDropdown: Dropdown;
     private uiComponents: UIComponent[];
     private activeComponent: UIComponent | null = null;
     private hoverComponent: UIComponent | null = null;
+    private gameMode: GameMode = 'survival';
 
     constructor(sceneManager: SceneManager) {
         this.sceneManager = sceneManager;
 
         const canvas = this.sceneManager.mouseHandler['canvas'] as HTMLCanvasElement;
-        const canvasWidth = canvas.width;
+        const cx = canvas.width / 2;
 
-        this.worldNameInput = new InputBox(canvasWidth / 2 - 200, 280, 400, 50, 'World Name');
-        this.worldSeedInput = new InputBox(canvasWidth / 2 - 200, 350, 400, 50, 'Seed (optional)');
+        this.worldNameInput = new InputBox({x: cx - 200, y: 280, width: 400, height: 50}, 'World Name');
+        this.worldSeedInput = new InputBox({x: cx - 200, y: 350, width: 400, height: 50}, 'Seed (optional)');
         
-        const createButton = new Button(canvasWidth / 2 - 200, 450, 180, 50, 'Create', () => this.createWorld());
-        const backButton = new Button(canvasWidth / 2 + 20, 450, 180, 50, 'Back', () => this.goBack());
+        const gameModes: GameMode[] = ['survival', 'creative', 'spectator'];
+        this.gamemodeDropdown = new Dropdown(
+            {x: cx - 200, y: 420, width: 400, height: 50}, 
+            'Game Mode', 
+            gameModes,
+            () => this.gameMode,
+            () => {
+                const currentIndex = gameModes.indexOf(this.gameMode);
+                this.gameMode = gameModes[(currentIndex + 1) % gameModes.length];
+                SoundManager.instance.playSound('ui.click');
+            }
+        );
+        
+        const createButton = new Button({x: cx - 200, y: 520, width: 180, height: 50}, 'Create', () => this.createWorld());
+        const backButton = new Button({x: cx + 20, y: 520, width: 180, height: 50}, 'Back', () => this.goBack());
 
-        this.uiComponents = [this.worldNameInput, this.worldSeedInput, createButton, backButton];
+        this.uiComponents = [this.worldNameInput, this.worldSeedInput, this.gamemodeDropdown, createButton, backButton];
         this.activeComponent = this.worldNameInput;
     }
 
@@ -135,19 +171,34 @@ export class WorldCreateScene implements Scene {
     };
 
     private createWorld() {
-        if (this.worldNameInput.text.trim() === '') {
-            console.log("World name cannot be empty");
+        SoundManager.instance.playSound('ui.click');
+        const worldName = this.worldNameInput.text.trim();
+        if (worldName === '') {
+            // TODO: Show error message
             return;
         }
+        if (WorldStorage.worldExists(worldName)) {
+            // TODO: Show error message
+            return;
+        }
+
         let seed = this.worldSeedInput.text.trim();
         if (seed === '') {
             seed = Date.now().toString();
         }
-        const gameState = new GameState({ worldSeed: seed });
-        this.sceneManager.switchScene(new GameScene(this.sceneManager, gameState));
+        
+        const options = {
+            worldName,
+            seed,
+            gameMode: this.gameMode
+        };
+
+        SoundManager.instance.stopMusic();
+        this.sceneManager.switchScene(new WorldLoadingScene(this.sceneManager, options));
     }
     
     private goBack() {
+        SoundManager.instance.playSound('ui.click');
         this.sceneManager.popScene();
     }
 
@@ -172,8 +223,8 @@ export class WorldCreateScene implements Scene {
         const mousePos = this.sceneManager.mouseHandler.position;
         this.hoverComponent = null;
         for (const component of this.uiComponents) {
-            if (mousePos.x >= component.x && mousePos.x <= component.x + component.width &&
-                mousePos.y >= component.y && mousePos.y <= component.y + component.height) {
+            if (mousePos.x >= component.rect.x && mousePos.x <= component.rect.x + component.rect.width &&
+                mousePos.y >= component.rect.y && mousePos.y <= component.rect.y + component.rect.height) {
                 this.hoverComponent = component;
                 break;
             }
@@ -188,8 +239,8 @@ export class WorldCreateScene implements Scene {
         if (pointerEndedPositions.length > 0) {
             for (const pos of pointerEndedPositions) {
                 for (const component of this.uiComponents) {
-                    if (pos.x >= component.x && pos.x <= component.x + component.width &&
-                        pos.y >= component.y && pos.y <= component.y + component.height) {
+                    if (pos.x >= component.rect.x && pos.x <= component.rect.x + component.rect.width &&
+                        pos.y >= component.rect.y && pos.y <= component.rect.y + component.rect.height) {
                         
                         clickedOnComponent = true;
                         

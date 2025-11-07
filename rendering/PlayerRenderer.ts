@@ -148,20 +148,21 @@ export class PlayerRenderer {
       const itemInfo = CraftingSystem.getItemInfo(heldItem.id);
       if (!itemInfo) return;
       
-      const frontArm = pose.leftArm.z > pose.rightArm.z ? pose.leftArm : pose.rightArm;
+      // FIX: Determine the holding arm based on which one is in front (higher z-index).
+      const holdingArm = pose.rightArm.z > pose.leftArm.z ? pose.rightArm : pose.leftArm;
       
       ctx.save();
       
       // We are in a coordinate system where (0,0) is the player's root (center of feet)
       // and has been scaled by facingDirection. We need to find the end of the arm in this space.
-      const armPivotX = frontArm.x - frontArm.width/2;
-      const armPivotY = frontArm.y - frontArm.height/2;
+      const armPivotX = holdingArm.x - holdingArm.width/2;
+      const armPivotY = holdingArm.y - holdingArm.height/2;
 
       ctx.translate(armPivotX, armPivotY);
-      ctx.rotate(frontArm.rotation);
+      ctx.rotate(holdingArm.rotation);
       
       // Move to the "hand" position, near the end of the arm
-      ctx.translate(0, frontArm.height * 0.8);
+      ctx.translate(0, holdingArm.height * 0.8);
       
       // Rotate item to a natural angle
       ctx.rotate(Math.PI / 4);
@@ -170,7 +171,6 @@ export class PlayerRenderer {
       ctx.translate(-itemSize / 2, -itemSize / 2);
       
       if (itemInfo.toolInfo) {
-        // FIX: Pass the `toolInfo` property of the `itemInfo` object, not the `itemInfo` object itself.
         this.drawToolIcon(ctx, itemInfo.toolInfo, itemSize);
       } else if (itemInfo.blockId) {
         const blockType = getBlockType(itemInfo.blockId);
@@ -212,16 +212,15 @@ export class PlayerRenderer {
             ctx.moveTo(size * 0.8, size * 0.2);
             ctx.lineTo(size * 0.2, size * 0.8);
             ctx.stroke();
-            // Head
+            // FIX: Draw a proper pickaxe head instead of an 'X'
             ctx.strokeStyle = materialColor;
             ctx.lineWidth = size * 0.15;
             ctx.beginPath();
-            ctx.moveTo(size * 0.9, size * 0.1);
-            ctx.lineTo(size * 0.7, size * 0.3);
-            ctx.moveTo(size * 0.7, size * 0.1);
-            ctx.lineTo(size * 0.9, size * 0.3);
+            ctx.moveTo(size * 0.95, size * 0.1); // left point
+            ctx.lineTo(size * 0.8, size * 0.2); // center (on handle)
+            ctx.lineTo(size * 0.7, size * 0.35); // right point
             ctx.stroke();
-          break;
+            break;
         case 'axe':
             // Handle
             ctx.strokeStyle = handleColor;
@@ -261,6 +260,10 @@ export class PlayerRenderer {
 
 
     public render(ctx: CanvasRenderingContext2D, player: Player, pose: PlayerPose): void {
+        if (player.gamemode === 'spectator') {
+            ctx.globalAlpha = 0.4;
+        }
+
         ctx.save();
         // Center the drawing operations on the player's base position and handle facing direction
         ctx.translate(player.position.x + player.width / 2, player.position.y);
@@ -285,5 +288,9 @@ export class PlayerRenderer {
         this.drawFace(ctx, player, pose);
 
         ctx.restore();
+
+        if (player.gamemode === 'spectator') {
+            ctx.globalAlpha = 1.0;
+        }
     }
 }
