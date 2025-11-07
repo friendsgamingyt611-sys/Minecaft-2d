@@ -1,11 +1,11 @@
 
-import { Settings, ControlScheme } from "../types";
+import { GlobalSettings, ControlScheme } from "../types";
 
 export class SettingsManager {
     private static _instance: SettingsManager;
-    public settings: Settings;
+    public settings: GlobalSettings;
 
-    private readonly SETTINGS_KEY = 'minecraft2D_settings_v1';
+    private readonly SETTINGS_KEY = 'minecraft2d_global_settings_v3';
     private isMobileDevice: boolean;
 
     private constructor() {
@@ -20,37 +20,94 @@ export class SettingsManager {
         return SettingsManager._instance;
     }
     
-    private get defaultSettings(): Settings {
+    private get defaultSettings(): GlobalSettings {
         return {
-            uiScale: 1.0,
-            renderInteractiveArea: false,
-            controlScheme: 'auto',
-            touchButtonSize: 1.0,
-            touchButtonOpacity: 0.6,
-            autoJump: true,
+            version: '3.0',
+            graphics: {
+                renderDistance: 8,
+                viewBobbing: true,
+                viewBobbingIntensity: 100,
+                particleEffects: 'All',
+                clouds: 'Fancy',
+                guiScale: 1.0,
+                brightness: 100,
+                fullscreen: false,
+                fpsLimit: 60,
+                fov: 70,
+                cameraShakeIntensity: 100,
+            },
+            audio: {
+                masterVolume: 100,
+                musicVolume: 50,
+                ambientSounds: 100,
+                blockSounds: 100,
+                playerSounds: 100,
+                uiSounds: 100,
+            },
+            controls: {
+                controlScheme: 'auto',
+                mouseSensitivity: 100,
+                autoJump: true,
+                toggleCrouch: false,
+                toggleSprint: false,
+                keyBindings: {}, // Future use
+                touchButtonSize: 1.0,
+                touchButtonOpacity: 0.7,
+            },
+            gameplay: {
+                difficulty: 'Normal',
+                showCoordinates: false,
+                showFps: false,
+                showBiome: false,
+                autoSaveIndicator: true,
+                renderInteractiveArea: false,
+                nametagDistance: 'Always',
+                nametagOpacity: 100,
+                nametagBackground: true,
+            },
+            accessibility: {
+                highContrast: false,
+                largeText: false,
+                reducedMotion: false,
+            }
         };
     }
 
-    public load(): Settings {
+    public load(): GlobalSettings {
         try {
             const savedSettings = localStorage.getItem(this.SETTINGS_KEY);
             if (savedSettings) {
-                // Merge saved settings with defaults to ensure new settings are applied
-                return { ...this.defaultSettings, ...JSON.parse(savedSettings) };
+                const parsed = JSON.parse(savedSettings);
+                // Deep merge to ensure all nested properties from defaults are present
+                // This prevents crashes when new settings are added in an update.
+                const mergedSettings = {
+                    ...this.defaultSettings,
+                    ...parsed,
+                    graphics: { ...this.defaultSettings.graphics, ...parsed.graphics },
+                    audio: { ...this.defaultSettings.audio, ...parsed.audio },
+                    controls: { ...this.defaultSettings.controls, ...parsed.controls },
+                    gameplay: { ...this.defaultSettings.gameplay, ...parsed.gameplay },
+                    accessibility: { ...this.defaultSettings.accessibility, ...parsed.accessibility },
+                };
+                // Re-assign to ensure type correctness
+                this.settings = mergedSettings;
+                return mergedSettings;
             }
         } catch (error) {
             console.error("Failed to load settings:", error);
         }
-        return this.defaultSettings;
+        this.settings = this.defaultSettings;
+        return this.settings;
     }
 
-    public save(newSettings?: Settings): void {
+    public save(newSettings?: GlobalSettings): void {
         if (newSettings) {
             this.settings = newSettings;
         }
         try {
             localStorage.setItem(this.SETTINGS_KEY, JSON.stringify(this.settings));
-        } catch (error) {
+        } catch (error)
+        {
             console.error("Failed to save settings:", error);
         }
     }
@@ -61,9 +118,9 @@ export class SettingsManager {
     }
     
     public getEffectiveControlScheme(): 'touch' | 'keyboard' {
-        if (this.settings.controlScheme === 'auto') {
+        if (this.settings.controls.controlScheme === 'auto') {
             return this.isMobileDevice ? 'touch' : 'keyboard';
         }
-        return this.settings.controlScheme;
+        return this.settings.controls.controlScheme as 'touch' | 'keyboard';
     }
 }

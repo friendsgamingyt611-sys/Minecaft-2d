@@ -1,8 +1,10 @@
+
 import { Player } from '../entities/Player';
 import { PlayerPose, BodyPart, ToolInfo, ItemId } from '../types';
 import { CraftingSystem } from '../crafting/CraftingSystem';
 import { BLOCK_SIZE } from '../core/Constants';
 import { getBlockType } from '../world/BlockRegistry';
+import { SettingsManager } from '../core/SettingsManager';
 
 export class PlayerRenderer {
 
@@ -148,23 +150,18 @@ export class PlayerRenderer {
       const itemInfo = CraftingSystem.getItemInfo(heldItem.id);
       if (!itemInfo) return;
       
-      // FIX: Determine the holding arm based on which one is in front (higher z-index).
       const holdingArm = pose.rightArm.z > pose.leftArm.z ? pose.rightArm : pose.leftArm;
       
       ctx.save();
       
-      // We are in a coordinate system where (0,0) is the player's root (center of feet)
-      // and has been scaled by facingDirection. We need to find the end of the arm in this space.
       const armPivotX = holdingArm.x - holdingArm.width/2;
       const armPivotY = holdingArm.y - holdingArm.height/2;
 
       ctx.translate(armPivotX, armPivotY);
       ctx.rotate(holdingArm.rotation);
       
-      // Move to the "hand" position, near the end of the arm
       ctx.translate(0, holdingArm.height * 0.8);
       
-      // Rotate item to a natural angle
       ctx.rotate(Math.PI / 4);
       
       const itemSize = BLOCK_SIZE * 0.7;
@@ -202,34 +199,29 @@ export class PlayerRenderer {
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
-      // Draw based on tool type
       switch (toolInfo.type) {
         case 'pickaxe':
-            // Handle
             ctx.strokeStyle = handleColor;
             ctx.lineWidth = size * 0.1;
             ctx.beginPath();
             ctx.moveTo(size * 0.8, size * 0.2);
             ctx.lineTo(size * 0.2, size * 0.8);
             ctx.stroke();
-            // FIX: Draw a proper pickaxe head instead of an 'X'
             ctx.strokeStyle = materialColor;
             ctx.lineWidth = size * 0.15;
             ctx.beginPath();
-            ctx.moveTo(size * 0.95, size * 0.1); // left point
-            ctx.lineTo(size * 0.8, size * 0.2); // center (on handle)
-            ctx.lineTo(size * 0.7, size * 0.35); // right point
+            ctx.moveTo(size * 0.95, size * 0.1);
+            ctx.lineTo(size * 0.8, size * 0.2);
+            ctx.lineTo(size * 0.7, size * 0.35);
             ctx.stroke();
             break;
         case 'axe':
-            // Handle
             ctx.strokeStyle = handleColor;
             ctx.lineWidth = size * 0.1;
             ctx.beginPath();
             ctx.moveTo(size * 0.8, size * 0.2);
             ctx.lineTo(size * 0.2, size * 0.8);
             ctx.stroke();
-            // Head
             ctx.fillStyle = materialColor;
             ctx.beginPath();
             ctx.moveTo(size * 0.9, size * 0.1);
@@ -239,14 +231,12 @@ export class PlayerRenderer {
             ctx.fill();
           break;
         case 'shovel':
-            // Handle
             ctx.strokeStyle = handleColor;
             ctx.lineWidth = size * 0.1;
             ctx.beginPath();
             ctx.moveTo(size * 0.8, size * 0.2);
             ctx.lineTo(size * 0.2, size * 0.8);
             ctx.stroke();
-            // Head
             ctx.fillStyle = materialColor;
             ctx.beginPath();
             ctx.moveTo(size*0.9, size*0.1);
@@ -258,14 +248,62 @@ export class PlayerRenderer {
       }
     }
 
+    private renderNametag(ctx: CanvasRenderingContext2D, player: Player) {
+        const { gameplay } = SettingsManager.instance.settings;
+    
+        // Check visibility setting
+        if (gameplay.nametagDistance === 'Never' || !player.profile.name) {
+            return;
+        }
+        // Note: Distance check for '16 Blocks' is for multiplayer and is ignored in single player.
+        // It will behave like 'Always' for now.
+    
+        const name = player.profile.name;
+        const opacity = gameplay.nametagOpacity / 100;
+        
+        // Position above the player's bounding box
+        const tagX = player.position.x + player.width / 2;
+        const tagY = player.position.y - 20; // Raise nametag higher above the player model
+    
+        ctx.font = "16px Minecraftia";
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        
+        ctx.save();
+        ctx.globalAlpha = opacity;
+    
+        if (gameplay.nametagBackground) {
+            const textMetrics = ctx.measureText(name);
+            const width = textMetrics.width + 10;
+            const height = 22;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(tagX - width / 2, tagY - height, width, height);
+        }
+        
+        // Text shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.fillText(name, tagX + 1, tagY + 1);
+    
+        // Main text
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(name, tagX, tagY);
+        
+        ctx.restore();
+    }
 
     public render(ctx: CanvasRenderingContext2D, player: Player, pose: PlayerPose): void {
+        this.renderBody(ctx, player, pose);
+        if (!player.isDead) {
+            this.renderNametag(ctx, player);
+        }
+    }
+
+    private renderBody(ctx: CanvasRenderingContext2D, player: Player, pose: PlayerPose): void {
         if (player.gamemode === 'spectator') {
             ctx.globalAlpha = 0.4;
         }
 
         ctx.save();
-        // Center the drawing operations on the player's base position and handle facing direction
         ctx.translate(player.position.x + player.width / 2, player.position.y);
         ctx.scale(player.facingDirection, 1);
 
@@ -273,18 +311,14 @@ export class PlayerRenderer {
             pose.head, pose.torso, pose.leftArm, pose.rightArm, pose.leftLeg, pose.rightLeg
         ];
 
-        // The animation system is now responsible for providing the correct z-indices.
-        // The renderer just sorts and draws.
         parts.sort((a, b) => a.z - b.z);
 
         for (const part of parts) {
             this.drawPart(ctx, part, player, player.facingDirection);
         }
         
-        // Add held item rendering AFTER body parts but BEFORE face
         this.renderHeldItem(ctx, player, pose);
         
-        // Draw face details on top of the head
         this.drawFace(ctx, player, pose);
 
         ctx.restore();

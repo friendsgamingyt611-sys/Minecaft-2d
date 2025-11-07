@@ -4,17 +4,23 @@ import { Scene, SceneManager } from './SceneManager';
 import { SettingsScene } from './SettingsScene';
 import { WorldListScene } from './WorldListScene';
 import { SoundManager } from '../core/SoundManager';
+import { ProfileManager } from '../core/ProfileManager';
 
 export class TitleScene implements Scene {
   private sceneManager: SceneManager;
   private buttons: { label: string; x: number; y: number; width: number; height: number; action: () => void }[] = [];
   private title = "Minecraft 2D";
-  private splashText = "Now with Sound!";
+  private splashText = "Settings Update!";
   private hoveredButton: any = null;
   private cloudOffset: number = 0;
+  private playerName: string = '';
   
   constructor(sceneManager: SceneManager) {
     this.sceneManager = sceneManager;
+    const profile = ProfileManager.instance.getActiveProfile();
+    if (profile) {
+        this.playerName = profile.name;
+    }
   }
   
   enter(): void {
@@ -68,14 +74,12 @@ export class TitleScene implements Scene {
   }
   
   update(deltaTime: number): void {
-     // Animate clouds
      this.cloudOffset += deltaTime * 10;
      const canvasWidth = this.sceneManager.mouseHandler['canvas'].width;
      if (this.cloudOffset > canvasWidth + 200) {
          this.cloudOffset = -200;
      }
 
-     // Handle hover for visual feedback (mouse only)
      const mousePos = this.sceneManager.mouseHandler.position;
      this.hoveredButton = null;
      for (const button of this.buttons) {
@@ -86,12 +90,10 @@ export class TitleScene implements Scene {
         }
      }
 
-     // Handle mouse click
      if (this.sceneManager.mouseHandler.isLeftClicked) {
          if (this.checkAndTriggerButton(mousePos)) return;
      }
 
-     // Handle touch taps
      for (const touch of this.sceneManager.touchHandler.justEndedTouches) {
          if (this.checkAndTriggerButton(touch)) return;
      }
@@ -112,31 +114,25 @@ export class TitleScene implements Scene {
     const canvasWidth = ctx.canvas.width;
     const canvasHeight = ctx.canvas.height;
     
-    // Background Sky
     ctx.fillStyle = '#63a3ff'; 
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-    // Clouds
     this.renderClouds(ctx);
 
-    // Background Ground
     const groundHeight = canvasHeight * 0.3;
-    ctx.fillStyle = '#8b5a2b'; // Dirt
+    ctx.fillStyle = '#8b5a2b';
     ctx.fillRect(0, canvasHeight - groundHeight, canvasWidth, groundHeight);
-    ctx.fillStyle = '#6a9b3d'; // Grass
+    ctx.fillStyle = '#6a9b3d';
     ctx.fillRect(0, canvasHeight - groundHeight, canvasWidth, 20);
-    ctx.fillStyle = 'rgba(0,0,0,0.1)'; // Grass shading
+    ctx.fillStyle = 'rgba(0,0,0,0.1)';
     ctx.fillRect(0, canvasHeight - groundHeight + 20, canvasWidth, 5);
 
 
-    // Title
     ctx.font = "100px Minecraftia";
     ctx.textAlign = 'center';
     ctx.lineWidth = 10;
-    // 3D effect
     ctx.fillStyle = '#3e3e3e';
     ctx.fillText(this.title, canvasWidth / 2 + 6, 256);
-    // Main Title Text
     const gradient = ctx.createLinearGradient(0, 150, 0, 250);
     gradient.addColorStop(0, '#d8d8d8');
     gradient.addColorStop(1, '#a0a0a0');
@@ -145,7 +141,6 @@ export class TitleScene implements Scene {
     ctx.strokeText(this.title, canvasWidth / 2, 250);
     ctx.fillText(this.title, canvasWidth / 2, 250);
 
-    // Splash Text
     ctx.save();
     ctx.translate(canvasWidth / 2 + 250, 280);
     ctx.rotate(0.3);
@@ -158,35 +153,30 @@ export class TitleScene implements Scene {
     ctx.restore();
 
 
-    // Buttons
     this.buttons.forEach(button => {
         const isHovered = button === this.hoveredButton;
-
-        // Classic Minecraft button style
-        ctx.fillStyle = '#383838'; // Dark border
+        ctx.fillStyle = '#383838';
         ctx.fillRect(button.x, button.y, button.width, button.height);
         
         const inset = 4;
-        ctx.fillStyle = isHovered ? '#b0b0b0' : '#7f7f7f'; // Main fill
+        ctx.fillStyle = isHovered ? '#b0b0b0' : '#7f7f7f';
         ctx.fillRect(button.x + inset, button.y + inset, button.width - inset * 2, button.height - inset * 2);
 
-        // Text
         ctx.font = "36px Minecraftia";
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        // Text shadow
         ctx.fillStyle = 'rgba(0,0,0,0.5)';
         ctx.fillText(button.label, button.x + button.width / 2 + 2, button.y + button.height / 2 + 2);
-        // Main text
         ctx.fillStyle = isHovered ? '#ffffa0' : '#ffffff';
         ctx.fillText(button.label, button.x + button.width / 2, button.y + button.height / 2);
     });
 
-    // Version info
-    ctx.font = "20px Minecraftia";
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'left';
-    ctx.fillText("Minecraft 2D v3.0", 10, canvasHeight - 10);
+    if (this.playerName) {
+        ctx.font = "24px Minecraftia";
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.fillText(`Welcome, ${this.playerName}`, canvasWidth / 2, canvasHeight - 20);
+    }
   }
 }

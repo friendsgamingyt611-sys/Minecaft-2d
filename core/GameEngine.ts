@@ -7,6 +7,8 @@ import { MouseHandler } from '../input/MouseHandler';
 import { SettingsManager } from './SettingsManager';
 import { TouchHandler } from '../input/TouchHandler';
 import { SoundManager } from './SoundManager';
+import { ProfileManager } from './ProfileManager';
+import { ProfileCreationScene } from '../scenes/ProfileCreationScene';
 
 export class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -29,6 +31,7 @@ export class GameEngine {
     
     // Initialize managers
     SettingsManager.instance.load();
+    ProfileManager.instance.loadProfiles();
     SoundManager.instance.preloadSounds();
 
     this.inputManager = new InputManager();
@@ -40,7 +43,14 @@ export class GameEngine {
   start() {
     if (this.isRunning) return;
     this.isRunning = true;
-    this.sceneManager.pushScene(new TitleScene(this.sceneManager));
+    
+    // Check if a player profile exists, otherwise force creation
+    if (!ProfileManager.instance.getActiveProfile()) {
+        this.sceneManager.pushScene(new ProfileCreationScene(this.sceneManager));
+    } else {
+        this.sceneManager.pushScene(new TitleScene(this.sceneManager));
+    }
+    
     this.lastTime = performance.now();
     this.gameLoop(this.lastTime);
   }

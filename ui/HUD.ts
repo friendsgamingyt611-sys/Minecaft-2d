@@ -1,27 +1,63 @@
 
 
 import { Player } from '../entities/Player';
-import { HOTBAR_SLOTS, HOTBAR_SLOT_SIZE, HOTBAR_ITEM_SIZE, MAX_HEALTH, MAX_HUNGER } from '../core/Constants';
+import { HOTBAR_SLOTS, HOTBAR_SLOT_SIZE, HOTBAR_ITEM_SIZE, MAX_HEALTH, MAX_HUNGER, BLOCK_SIZE } from '../core/Constants';
 import { BlockRenderer } from '../rendering/BlockRenderer';
 import { getBlockType } from '../world/BlockRegistry';
 import { CraftingSystem } from '../crafting/CraftingSystem';
 import { TouchControlsUI } from './TouchControlsUI';
 import { SettingsManager } from '../core/SettingsManager';
+import { TouchHandler } from '../input/TouchHandler';
 
 export class HUD {
   private player: Player;
   private blockRenderer: BlockRenderer;
   private touchControlsUI: TouchControlsUI;
+  private touchHandler: TouchHandler;
+  private togglePauseCallback: () => void;
   private canvas: HTMLCanvasElement;
+  
+  private lastFrameTimes: number[] = [];
+  private fps: number = 0;
 
-  constructor(player: Player, touchControlsUI: TouchControlsUI) {
+  private pauseButtonRect: { x: number, y: number, w: number, h: number };
+  private autoSaveIndicatorTimer: number = 0;
+
+
+  constructor(player: Player, touchControlsUI: TouchControlsUI, touchHandler: TouchHandler, togglePause: () => void) {
     this.player = player;
     this.blockRenderer = new BlockRenderer();
-    this.touchControlsUI = touchControlsUI;
+    this.touchControlsUI = new TouchControlsUI(touchHandler);
+    this.touchHandler = touchHandler;
+    this.togglePauseCallback = togglePause;
     this.canvas = document.querySelector('canvas')!;
+
+    const size = 50 * this.guiScale;
+    this.pauseButtonRect = { x: this.canvas.width - size - 15, y: 15, w: size, h: size};
+  }
+  
+  private get guiScale(): number {
+      return SettingsManager.instance.settings.graphics.guiScale;
+  }
+  
+  public displaySaveIndicator(): void {
+      this.autoSaveIndicatorTimer = 180; // 3 seconds at 60fps
+  }
+  
+  public update(deltaTime: number): void {
+      if (this.autoSaveIndicatorTimer > 0) {
+          this.autoSaveIndicatorTimer -= 60 * deltaTime;
+      }
   }
 
   public render(ctx: CanvasRenderingContext2D): void {
+    const now = performance.now();
+    while (this.lastFrameTimes.length > 0 && this.lastFrameTimes[0] <= now - 1000) {
+      this.lastFrameTimes.shift();
+    }
+    this.lastFrameTimes.push(now);
+    this.fps = this.lastFrameTimes.length;
+    
     this.renderHealthBar(ctx);
     this.renderHungerBar(ctx);
     this.renderXpBar(ctx);
@@ -29,18 +65,98 @@ export class HUD {
     
     if (SettingsManager.instance.getEffectiveControlScheme() === 'touch') {
         this.touchControlsUI.render(ctx, this.player);
+        this.renderPauseButton(ctx);
     }
+
+    this.renderDebugInfo(ctx);
+    this.renderAutoSaveIndicator(ctx);
   }
 
   public getHotbarSlotRect(slotIndex: number): { x: number, y: number, w: number, h: number } {
-      const hudWidth = HOTBAR_SLOTS * HOTBAR_SLOT_SIZE;
+      const scaledSlotSize = HOTBAR_SLOT_SIZE * this.guiScale;
+      const hudWidth = HOTBAR_SLOTS * scaledSlotSize;
       const startX = (this.canvas.width - hudWidth) / 2;
-      const startY = this.canvas.height - HOTBAR_SLOT_SIZE - 20;
-      const slotX = startX + slotIndex * HOTBAR_SLOT_SIZE;
-      return { x: slotX, y: startY, w: HOTBAR_SLOT_SIZE, h: HOTBAR_SLOT_SIZE };
+      const startY = this.canvas.height - scaledSlotSize - (20 * this.guiScale);
+      const slotX = startX + slotIndex * scaledSlotSize;
+      return { x: slotX, y: startY, w: scaledSlotSize, h: scaledSlotSize };
+  }
+
+  private renderAutoSaveIndicator(ctx: CanvasRenderingContext2D) {
+      const { gameplay } = SettingsManager.instance.settings;
+      if (this.autoSaveIndicatorTimer > 0 && gameplay.autoSaveIndicator) {
+          const text = "Saving...";
+          ctx.font = `${18 * this.guiScale}px Minecraftia`;
+          const textMetrics = ctx.measureText(text);
+          const x = this.canvas.width - textMetrics.width - 15;
+          const y = this.canvas.height - 15;
+
+          const alpha = Math.min(1, this.autoSaveIndicatorTimer / 60);
+
+          ctx.fillStyle = `rgba(0,0,0,${0.5 * alpha})`;
+          ctx.fillText(text, x + 1, y + 1);
+          ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+          ctx.fillText(text, x, y);
+      }
+  }
+
+  private renderPauseButton(ctx: CanvasRenderingContext2D) {
+    for (const touch of this.touchHandler.justEndedTouches) {
+        if (touch.x > this.pauseButtonRect.x && touch.x < this.pauseButtonRect.x + this.pauseButtonRect.w &&
+            touch.y > this.pauseButtonRect.y && touch.y < this.pauseButtonRect.y + this.pauseButtonRect.h) {
+            this.togglePauseCallback();
+            break;
+        }
+    }
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.fillRect(this.pauseButtonRect.x, this.pauseButtonRect.y, this.pauseButtonRect.w, this.pauseButtonRect.h);
+    
+    const barW = this.pauseButtonRect.w * 0.2;
+    const barH = this.pauseButtonRect.h * 0.6;
+    const barY = this.pauseButtonRect.y + this.pauseButtonRect.h * 0.2;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(this.pauseButtonRect.x + this.pauseButtonRect.w * 0.25, barY, barW, barH);
+    ctx.fillRect(this.pauseButtonRect.x + this.pauseButtonRect.w * 0.55, barY, barW, barH);
+  }
+
+  private renderDebugInfo(ctx: CanvasRenderingContext2D) {
+    const { gameplay } = SettingsManager.instance.settings;
+    if (!gameplay.showFps && !gameplay.showCoordinates && !gameplay.showBiome) return;
+
+    ctx.font = `${18 * this.guiScale}px Minecraftia`;
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    
+    let infoLines = 0;
+    if (gameplay.showFps) infoLines++;
+    if (gameplay.showCoordinates) infoLines++;
+    if (gameplay.showBiome) infoLines++;
+    
+    ctx.fillRect(5, 5, 250 * this.guiScale, 5 + infoLines * (20 * this.guiScale));
+    
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'left';
+
+    let yOffset = 25 * this.guiScale;
+    const xOffset = 10 * this.guiScale;
+
+    if (gameplay.showFps) {
+      ctx.fillText(`FPS: ${this.fps}`, xOffset, yOffset);
+      yOffset += 20 * this.guiScale;
+    }
+    if (gameplay.showCoordinates) {
+      const x = (this.player.position.x / BLOCK_SIZE).toFixed(2);
+      const y = (this.player.position.y / BLOCK_SIZE).toFixed(2);
+      ctx.fillText(`X: ${x} Y: ${y}`, xOffset, yOffset);
+      yOffset += 20 * this.guiScale;
+    }
+    if (gameplay.showBiome) {
+      const biome = this.player.world.generator.getBiome(Math.floor(this.player.position.x / BLOCK_SIZE));
+      ctx.fillText(`Biome: ${biome.name}`, xOffset, yOffset);
+    }
   }
 
   private renderHotbar(ctx: CanvasRenderingContext2D): void {
+    const scaledItemSize = HOTBAR_ITEM_SIZE * this.guiScale;
     for (let i = 0; i < HOTBAR_SLOTS; i++) {
       const rect = this.getHotbarSlotRect(i);
       
@@ -50,13 +166,13 @@ export class HUD {
       ctx.globalAlpha = 1.0;
 
       ctx.strokeStyle = this.player.activeHotbarSlot === i ? '#ffffff' : '#888888';
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 3 * this.guiScale;
       ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
 
       const item = this.player.inventory.getItem(i);
       if (item !== null) {
-        const itemX = rect.x + (HOTBAR_SLOT_SIZE - HOTBAR_ITEM_SIZE) / 2;
-        const itemY = rect.y + (HOTBAR_SLOT_SIZE - HOTBAR_ITEM_SIZE) / 2;
+        const itemX = rect.x + (rect.w - scaledItemSize) / 2;
+        const itemY = rect.y + (rect.h - scaledItemSize) / 2;
         
         const itemInfo = CraftingSystem.getItemInfo(item.id);
         const blockId = itemInfo?.blockId;
@@ -65,25 +181,25 @@ export class HUD {
             const blockType = getBlockType(blockId);
             if (blockType) {
                 if (blockType.texture) {
-                    blockType.texture(ctx, itemX, itemY, HOTBAR_ITEM_SIZE);
+                    blockType.texture(ctx, itemX, itemY, scaledItemSize);
                 } else {
                     ctx.fillStyle = blockType.color;
-                    ctx.fillRect(itemX, itemY, HOTBAR_ITEM_SIZE, HOTBAR_ITEM_SIZE);
+                    ctx.fillRect(itemX, itemY, scaledItemSize, scaledItemSize);
                 }
             }
         }
 
         if (item.count > 1) {
             const text = item.count.toString();
-            ctx.font = "18px Minecraftia";
+            ctx.font = `${18 * this.guiScale}px Minecraftia`;
             ctx.textAlign = 'right';
             ctx.textBaseline = 'bottom';
             
             ctx.fillStyle = '#3f3f3f';
-            ctx.fillText(text, rect.x + HOTBAR_SLOT_SIZE - 4, rect.y + HOTBAR_SLOT_SIZE - 4);
+            ctx.fillText(text, rect.x + rect.w - 4, rect.y + rect.h - 4);
 
             ctx.fillStyle = '#ffffff';
-            ctx.fillText(text, rect.x + HOTBAR_SLOT_SIZE - 5, rect.y + HOTBAR_SLOT_SIZE - 5);
+            ctx.fillText(text, rect.x + rect.w - 5, rect.y + rect.h - 5);
             
             ctx.textAlign = 'start';
             ctx.textBaseline = 'alphabetic';
@@ -93,13 +209,14 @@ export class HUD {
   }
 
   private renderHealthBar(ctx: CanvasRenderingContext2D): void {
-    const hudWidth = HOTBAR_SLOTS * HOTBAR_SLOT_SIZE;
+    const scaledSlotSize = HOTBAR_SLOT_SIZE * this.guiScale;
+    const hudWidth = HOTBAR_SLOTS * scaledSlotSize;
     const startX = (ctx.canvas.width - hudWidth) / 2;
-    const startY = ctx.canvas.height - HOTBAR_SLOT_SIZE - 20 - 30;
-    const iconSize = 20;
+    const startY = ctx.canvas.height - scaledSlotSize - (20 * this.guiScale) - (30 * this.guiScale);
+    const iconSize = 20 * this.guiScale;
 
     for (let i = 0; i < MAX_HEALTH / 2; i++) {
-        const x = startX + i * (iconSize + 2);
+        const x = startX + i * (iconSize + 2 * this.guiScale);
         const y = startY;
         const healthValue = this.player.health - i * 2;
 
@@ -134,13 +251,14 @@ export class HUD {
   }
 
   private renderHungerBar(ctx: CanvasRenderingContext2D): void {
-      const hudWidth = HOTBAR_SLOTS * HOTBAR_SLOT_SIZE;
+      const scaledSlotSize = HOTBAR_SLOT_SIZE * this.guiScale;
+      const hudWidth = HOTBAR_SLOTS * scaledSlotSize;
       const startX = (ctx.canvas.width + hudWidth) / 2;
-      const startY = ctx.canvas.height - HOTBAR_SLOT_SIZE - 20 - 30;
-      const iconSize = 20;
+      const startY = ctx.canvas.height - scaledSlotSize - (20 * this.guiScale) - (30 * this.guiScale);
+      const iconSize = 20 * this.guiScale;
 
       for (let i = 0; i < MAX_HUNGER / 2; i++) {
-          const x = startX - (i + 1) * (iconSize + 2);
+          const x = startX - (i + 1) * (iconSize + 2 * this.guiScale);
           const y = startY;
           const hungerValue = this.player.hunger - i * 2;
           this.drawDrumstick(ctx, x, y, iconSize, hungerValue);
@@ -177,10 +295,11 @@ export class HUD {
   }
 
   private renderXpBar(ctx: CanvasRenderingContext2D): void {
-    const hudWidth = HOTBAR_SLOTS * HOTBAR_SLOT_SIZE;
-    const barY = this.canvas.height - HOTBAR_SLOT_SIZE - 20 - 15;
+    const scaledSlotSize = HOTBAR_SLOT_SIZE * this.guiScale;
+    const hudWidth = HOTBAR_SLOTS * scaledSlotSize;
+    const barY = this.canvas.height - scaledSlotSize - (20 * this.guiScale) - (15 * this.guiScale);
     const barX = (this.canvas.width - hudWidth) / 2;
-    const barHeight = 10;
+    const barHeight = 10 * this.guiScale;
 
     // Bar background
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -195,13 +314,13 @@ export class HUD {
     // Level number
     if (this.player.level > 0) {
         const text = this.player.level.toString();
-        ctx.font = "20px Minecraftia";
+        ctx.font = `${20 * this.guiScale}px Minecraftia`;
         ctx.textAlign = 'center';
 
         ctx.fillStyle = '#3f3f3f'; // Shadow
-        ctx.fillText(text, this.canvas.width / 2 + 1, barY - 10 + 1);
+        ctx.fillText(text, this.canvas.width / 2 + 1, barY - (10 * this.guiScale) + 1);
         ctx.fillStyle = '#80FF20'; // Main text
-        ctx.fillText(text, this.canvas.width / 2, barY - 10);
+        ctx.fillText(text, this.canvas.width / 2, barY - (10 * this.guiScale));
     }
   }
 }

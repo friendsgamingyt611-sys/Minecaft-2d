@@ -20,7 +20,8 @@ export class TouchControlsUI {
     private renderJoystick(ctx: CanvasRenderingContext2D) {
         if (!this.touchHandler.isJoystickActive()) return;
 
-        const opacity = SettingsManager.instance.settings.touchButtonOpacity;
+        // FIX: Access setting from the correct 'controls' sub-object.
+        const opacity = SettingsManager.instance.settings.controls.touchButtonOpacity;
 
         // Draw joystick base
         ctx.beginPath();
@@ -37,10 +38,11 @@ export class TouchControlsUI {
     }
     
     private renderButtons(ctx: CanvasRenderingContext2D, player: Player) {
-        const settings = SettingsManager.instance.settings;
+        const { controls } = SettingsManager.instance.settings;
 
         this.touchHandler.getButtons().forEach(button => {
-            const opacity = button.isPressed ? settings.touchButtonOpacity * 1.5 : settings.touchButtonOpacity;
+            // FIX: Access setting from the correct 'controls' sub-object.
+            const opacity = button.isPressed ? controls.touchButtonOpacity * 1.5 : controls.touchButtonOpacity;
             ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
             ctx.strokeStyle = `rgba(0, 0, 0, ${opacity})`;
             ctx.lineWidth = 4;
@@ -59,10 +61,12 @@ export class TouchControlsUI {
         const cx = x + w / 2;
         const cy = y + h / 2;
         const size = w * 0.4;
-        const settings = SettingsManager.instance.settings;
+        const { controls } = SettingsManager.instance.settings;
         
-        ctx.fillStyle = `rgba(0, 0, 0, ${settings.touchButtonOpacity * 1.2})`;
-        ctx.strokeStyle = `rgba(0, 0, 0, ${settings.touchButtonOpacity * 1.2})`;
+        // FIX: Access setting from the correct 'controls' sub-object.
+        ctx.fillStyle = `rgba(0, 0, 0, ${controls.touchButtonOpacity * 1.2})`;
+        // FIX: Access setting from the correct 'controls' sub-object.
+        ctx.strokeStyle = `rgba(0, 0, 0, ${controls.touchButtonOpacity * 1.2})`;
         ctx.lineWidth = Math.max(4, w * 0.1);
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';

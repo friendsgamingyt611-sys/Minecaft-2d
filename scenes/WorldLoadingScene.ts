@@ -5,6 +5,7 @@ import { WorldStorage } from '../core/WorldStorage';
 import { ChunkSystem } from '../world/ChunkSystem';
 import { Player } from '../entities/Player';
 import { VIEW_DISTANCE_CHUNKS, CHUNK_PIXEL_SIZE } from '../core/Constants';
+import { ProfileManager } from '../core/ProfileManager';
 
 interface WorldCreationOptions {
     worldName: string;
@@ -133,7 +134,13 @@ export class WorldLoadingScene implements Scene {
             version: '1.0'
         };
 
-        const tempPlayer = new Player(spawnPoint, this.tempWorld, this.sceneManager.mouseHandler, this.sceneManager.touchHandler, this.sceneManager.inputManager, null as any, () => {});
+        const activeProfile = ProfileManager.instance.getActiveProfile();
+        if (!activeProfile) {
+            throw new Error("Cannot create a world without an active profile.");
+        }
+
+        // FIX: Added the missing 'profile' argument to the Player constructor.
+        const tempPlayer = new Player(activeProfile, spawnPoint, this.tempWorld, this.sceneManager.mouseHandler, this.sceneManager.touchHandler, this.sceneManager.inputManager, null as any, () => {});
         tempPlayer.gamemode = this.options.gameMode;
         newWorld.player = tempPlayer.toData();
         

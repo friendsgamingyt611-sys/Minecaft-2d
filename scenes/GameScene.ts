@@ -1,3 +1,4 @@
+
 import { Scene, SceneManager } from './SceneManager';
 import { ChunkSystem } from '../world/ChunkSystem';
 import { Player } from '../entities/Player';
@@ -18,6 +19,7 @@ import { SettingsScene } from './SettingsScene';
 import { SettingsManager } from '../core/SettingsManager';
 import { WorldStorage } from '../core/WorldStorage';
 import { SoundManager } from '../core/SoundManager';
+import { ProfileManager } from '../core/ProfileManager';
 
 export class GameScene implements Scene {
   private sceneManager: SceneManager;
@@ -62,19 +64,30 @@ export class GameScene implements Scene {
 
     this.physicsSystem = new PhysicsSystem(this.world);
     
-    this.player = new Player(this.worldData.metadata.spawnPoint, this.world, this.sceneManager.mouseHandler, this.sceneManager.touchHandler, this.sceneManager.inputManager, this.physicsSystem, this.onPlayerAction);
+    const activeProfile = ProfileManager.instance.getActiveProfile();
+    if (!activeProfile) {
+        // This should not happen if GameEngine logic is correct, but as a fallback:
+        this.sceneManager.switchScene(new TitleScene(this.sceneManager));
+        throw new Error("No active profile found when starting game scene.");
+    }
+
+    this.player = new Player(activeProfile, this.worldData.metadata.spawnPoint, this.world, this.sceneManager.mouseHandler, this.sceneManager.touchHandler, this.sceneManager.inputManager, this.physicsSystem, this.onPlayerAction);
     this.player.fromData(this.worldData.player);
     this.player.gamemode = this.worldData.metadata.gameMode;
 
     const canvas = this.sceneManager.mouseHandler['canvas'] as HTMLCanvasElement;
     this.camera = new Camera(canvas.width, canvas.height, this.player);
     this.renderer = new RenderEngine(this.camera);
-    this.hud = new HUD(this.player, this.touchControlsUI);
+    this.hud = new HUD(this.player, this.touchControlsUI, this.sceneManager.touchHandler, this.togglePause);
     this.animationSystem = new AnimationSystem();
     this.craftingSystem = new CraftingSystem();
     this.inventoryUI = new InventoryUI(this.player, this.craftingSystem, this.sceneManager.mouseHandler, this.sceneManager.touchHandler);
 
     this.setupMenus(canvas);
+  }
+  
+  public togglePause = () => {
+      this.isPaused = !this.isPaused;
   }
 
   private setupMenus(canvas: HTMLCanvasElement) {
@@ -112,6 +125,7 @@ export class GameScene implements Scene {
     this.worldData.chunks = this.world.toData();
     this.worldData.metadata.lastPlayed = Date.now();
     WorldStorage.saveWorld(this.worldData);
+    this.hud.displaySaveIndicator();
     console.log(`World "${this.worldData.metadata.name}" saved.`);
   }
 
@@ -162,6 +176,7 @@ export class GameScene implements Scene {
     if (this.player.isDead) {
       this.deathAnimationTimer += deltaTime;
       this.animationSystem.update(deltaTime, this.player);
+      this.camera.update(deltaTime);
       if (this.deathAnimationTimer >= this.DEATH_ANIMATION_DURATION) {
          this.updateMenu(this.deathMenuButtons);
       }
@@ -172,7 +187,7 @@ export class GameScene implements Scene {
         if(this.inventoryUI.isOpen()){
             this.inventoryUI.close();
         } else {
-            this.isPaused = !this.isPaused;
+            this.togglePause();
         }
     }
     
@@ -191,6 +206,7 @@ export class GameScene implements Scene {
     this.world.update(this.player.position);
     this.camera.update(deltaTime);
     this.animationSystem.update(deltaTime, this.player);
+    this.hud.update(deltaTime);
 
     this.itemEntities.forEach(entity => {
       entity.update(deltaTime, this.physicsSystem);
@@ -237,7 +253,6 @@ export class GameScene implements Scene {
     const isActuallyDead = this.player.isDead && this.deathAnimationTimer >= this.DEATH_ANIMATION_DURATION;
     
     if (this.player.isDead) {
-        // Grayscale effect
         ctx.save();
         const grayscale = Math.min(1, this.deathAnimationTimer / (this.DEATH_ANIMATION_DURATION - 1.0));
         ctx.filter = `grayscale(${grayscale})`;
@@ -245,9 +260,14 @@ export class GameScene implements Scene {
 
     this.renderer.render(ctx, this.world, this.player, this.sceneManager.mouseHandler, this.animationSystem, this.itemEntities);
     
-    if (!isActuallyDead) {
-        this.hud.render(ctx);
+    if (this.isPaused) {
+      this.renderPauseMenu(ctx);
+    } else {
+       if (!isActuallyDead) {
+          this.hud.render(ctx);
+      }
     }
+    
 
     if (this.player.justTookDamage) {
         ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
@@ -262,10 +282,6 @@ export class GameScene implements Scene {
     
     if (this.inventoryUI.isOpen()) {
       this.inventoryUI.render(ctx);
-    }
-    
-    if (this.isPaused) {
-      this.renderPauseMenu(ctx);
     }
   }
 

@@ -160,26 +160,20 @@ export interface Biome {
 // V2.5.1 Cross-Platform Update
 export type ControlScheme = 'auto' | 'touch' | 'keyboard';
 
-export interface Settings {
-    // Graphics
-    uiScale: number;
-    renderInteractiveArea: boolean;
-    // Controls
-    controlScheme: ControlScheme;
-    touchButtonSize: number;
-    touchButtonOpacity: number;
-    // Gameplay
-    autoJump: boolean;
-}
-
 export interface InputState {
     moveX: number; // -1, 0, or 1
     jump: {
         pressed: boolean, // is the button currently down
         justPressed: boolean, // was it just pressed this frame
     },
-    sneak: boolean;
-    sprint: boolean;
+    sneak: {
+        pressed: boolean,
+        justPressed: boolean,
+    },
+    sprint: {
+        pressed: boolean,
+        justPressed: boolean,
+    },
     place: boolean; // right-click or place button (is clicked)
     destroy: boolean; // left-click or destroy button (is down)
     inventory: boolean; // 'e' or inventory button (is pressed)
@@ -229,4 +223,84 @@ export interface WorldData {
     player: PlayerData;
     chunks: [string, ChunkData][]; // Store as array of [key, value] pairs
     version: string;
+}
+
+
+// --- V3.0 NEW SETTINGS & PLAYER PROFILE SYSTEM ---
+
+export interface PlayerProfile {
+  uuid: string;
+  name: string;
+  skin: {
+    skinColor: string;
+    shirtColor: string;
+    pantsColor: string;
+    hairColor: string;
+  };
+  createdAt: number;
+  lastPlayed: number;
+}
+
+// Settings Interfaces
+export interface GraphicsSettings {
+  renderDistance: number; // 2-16 chunks
+  viewBobbing: boolean;
+  viewBobbingIntensity: number; // 0-200%
+  particleEffects: 'All' | 'Decreased' | 'Minimal' | 'Off';
+  clouds: 'Fancy' | 'Fast' | 'Off';
+  guiScale: number; // 0.5 - 2.0
+  brightness: number; // 0-100%
+  fullscreen: boolean;
+  fpsLimit: number; // 30, 60, 120, 0 (unlimited)
+  fov: number; // 30-110
+  cameraShakeIntensity: number; // 0-200%
+}
+
+export interface AudioSettings {
+  masterVolume: number; // 0-100
+  musicVolume: number; // 0-100
+  ambientSounds: number; // 0-100
+  blockSounds: number; // 0-100
+  playerSounds: number; // 0-100
+  uiSounds: number; // 0-100
+}
+
+export type KeyBinding = { [key: string]: string };
+
+export interface ControlsSettings {
+  controlScheme: ControlScheme;
+  mouseSensitivity: number; // 0-200%
+  autoJump: boolean;
+  toggleCrouch: boolean;
+  toggleSprint: boolean;
+  keyBindings: KeyBinding;
+  touchButtonSize: number;
+  touchButtonOpacity: number;
+}
+
+export interface GameplaySettings {
+  difficulty: 'Peaceful' | 'Easy' | 'Normal' | 'Hard';
+  showCoordinates: boolean;
+  showFps: boolean;
+  showBiome: boolean;
+  autoSaveIndicator: boolean;
+  renderInteractiveArea: boolean;
+  nametagDistance: 'Always' | '16 Blocks' | 'Never';
+  nametagOpacity: number; // 0-100
+  nametagBackground: boolean;
+}
+
+export interface AccessibilitySettings {
+  highContrast: boolean;
+  largeText: boolean;
+  reducedMotion: boolean;
+}
+
+export interface GlobalSettings {
+  version: string;
+  graphics: GraphicsSettings;
+  audio: AudioSettings;
+  controls: ControlsSettings;
+  gameplay: GameplaySettings;
+  accessibility: AccessibilitySettings;
 }

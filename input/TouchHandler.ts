@@ -1,6 +1,6 @@
 
 
-import { TOUCH_JOYSTICK_RADIUS, TOUCH_JOYSTICK_KNOB_RADIUS, TOUCH_BUTTON_SIZE, TOUCH_BUTTON_MARGIN, HOTBAR_SLOT_SIZE } from '../core/Constants';
+import { TOUCH_JOYSTICK_RADIUS, TOUCH_JOYSTICK_KNOB_RADIUS, TOUCH_BUTTON_SIZE, TOUCH_BUTTON_MARGIN, HOTBAR_SLOT_SIZE, HOTBAR_SLOTS } from '../core/Constants';
 import { SettingsManager } from '../core/SettingsManager';
 import { Vector2 } from '../types';
 
@@ -48,10 +48,10 @@ export class TouchHandler {
     private initializeButtons() {
         const { width, height } = this.canvas;
         const settings = SettingsManager.instance.settings;
-        const size = TOUCH_BUTTON_SIZE * settings.touchButtonSize;
+        const guiScale = settings.graphics.guiScale;
+        const size = TOUCH_BUTTON_SIZE * settings.controls.touchButtonSize;
         const margin = TOUCH_BUTTON_MARGIN;
 
-        // Define joystick zone first as other buttons may be relative to it
         this.joystickActivationZone = {
             x: 0,
             y: height / 2,
@@ -59,14 +59,26 @@ export class TouchHandler {
             h: height / 2
         };
 
+        // Hotbar layout calculation (mirrored from HUD.ts)
+        const scaledSlotSize = HOTBAR_SLOT_SIZE * guiScale;
+        const hudWidth = HOTBAR_SLOTS * scaledSlotSize;
+        const hotbarStartX = (width - hudWidth) / 2;
+        const hotbarY = height - scaledSlotSize - (20 * guiScale);
+
+        // New inventory button definition
+        const invButtonSize = scaledSlotSize * 1.1; // Slightly bigger
+        const invButtonMargin = 10 * guiScale;
+        const invButtonX = hotbarStartX - invButtonMargin - invButtonSize;
+        const invButtonY = hotbarY + (scaledSlotSize - invButtonSize) / 2; // Vertically centered with hotbar
+
         const buttonDefs: { id: TouchButtonType, pos: Vector2, customSize?: number }[] = [
             // Right-side main buttons
             { id: 'jump', pos: { x: width - size - margin, y: height - size - margin } },
             { id: 'sneak', pos: { x: width - size * 2 - margin * 2, y: height - size - margin } },
             { id: 'action', pos: { x: width - size - margin, y: height - size * 2 - margin * 2 } },
             
-            // Inventory button top-right
-            { id: 'inventory', pos: { x: width - (size * 0.8) - margin, y: margin }, customSize: size * 0.8 },
+            // New inventory button beside hotbar
+            { id: 'inventory', pos: { x: invButtonX, y: invButtonY }, customSize: invButtonSize },
 
             // Sprint button above joystick zone
             { id: 'sprint', pos: { x: this.joystickActivationZone.x + margin, y: this.joystickActivationZone.y - size - margin } }

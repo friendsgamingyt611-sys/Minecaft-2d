@@ -1,10 +1,10 @@
 
+import { SettingsManager } from "./SettingsManager";
+
 export class SoundManager {
     private static _instance: SoundManager;
     private sounds: Map<string, HTMLAudioElement> = new Map();
     private music: HTMLAudioElement | null = null;
-    private volume: number = 0.5;
-    private musicVolume: number = 0.3;
     
     private constructor() {}
 
@@ -22,7 +22,7 @@ export class SoundManager {
             'block.break.stone': 'https://aicore-world-assets.web.app/minecraft-2d/sounds/stone_break.ogg',
             'block.break.wood': 'https://aicore-world-assets.web.app/minecraft-2d/sounds/wood_break.ogg',
             'block.break.dirt': 'https://aicore-world-assets.web.app/minecraft-2d/sounds/dirt_break.ogg',
-            'block.break.grass': 'https://aicore-world-assets.web.app/minecraft-2d/sounds/dirt_break.ogg', // FIX: Added grass sound
+            'block.break.grass': 'https://aicore-world-assets.web.app/minecraft-2d/sounds/dirt_break.ogg',
             'block.place': 'https://aicore-world-assets.web.app/minecraft-2d/sounds/place.ogg',
             'ui.click': 'https://aicore-world-assets.web.app/minecraft-2d/sounds/ui_click.ogg',
         };
@@ -34,13 +34,27 @@ export class SoundManager {
         }
     }
 
-    playSound(soundKey: string, customVolume: number = 1.0) {
+    private getVolume(type: 'block' | 'player' | 'ui' | 'ambient'): number {
+        const audioSettings = SettingsManager.instance.settings.audio;
+        const master = audioSettings.masterVolume / 100;
+        let category = 1.0;
+        if (type === 'block') category = audioSettings.blockSounds / 100;
+        if (type === 'player') category = audioSettings.playerSounds / 100;
+        if (type === 'ui') category = audioSettings.uiSounds / 100;
+        if (type === 'ambient') category = audioSettings.ambientSounds / 100;
+        return master * category;
+    }
+
+    playSound(soundKey: string) {
         const sound = this.sounds.get(soundKey);
         if (sound) {
-            // Create a new audio element for each play to allow overlapping sounds
             const soundInstance = sound.cloneNode() as HTMLAudioElement;
-            soundInstance.volume = this.volume * customVolume;
-            soundInstance.play().catch(e => {}); // Ignore autoplay errors
+            let type: 'block' | 'player' | 'ui' | 'ambient' = 'block';
+            if (soundKey.startsWith('player')) type = 'player';
+            if (soundKey.startsWith('ui')) type = 'ui';
+            
+            soundInstance.volume = this.getVolume(type);
+            soundInstance.play().catch(e => {});
         }
     }
 
@@ -49,11 +63,18 @@ export class SoundManager {
             this.music.pause();
         }
         this.music = new Audio(`https://aicore-world-assets.web.app/minecraft-2d/music/${musicKey}.ogg`);
-        this.music.volume = this.musicVolume;
+        this.updateMusicVolume();
         this.music.loop = loop;
         document.addEventListener('click', () => {
              this.music?.play().catch(() => {});
         }, { once: true });
+    }
+    
+    public updateMusicVolume() {
+        if (this.music) {
+            const audioSettings = SettingsManager.instance.settings.audio;
+            this.music.volume = (audioSettings.masterVolume / 100) * (audioSettings.musicVolume / 100);
+        }
     }
 
     stopMusic() {

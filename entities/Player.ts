@@ -1,4 +1,5 @@
-import { Vector2, BlockId, Particle, Item, ItemId, GameMode, InputState, BlockType, PlayerData, WorldData } from '../types';
+
+import { Vector2, BlockId, Particle, Item, ItemId, GameMode, InputState, BlockType, PlayerData, WorldData, PlayerProfile } from '../types';
 import { ChunkSystem } from '../world/ChunkSystem';
 import { 
     PLAYER_MOVE_SPEED, GRAVITY, PLAYER_JUMP_FORCE, PLAYER_FRICTION,
@@ -22,10 +23,10 @@ import { SoundManager } from '../core/SoundManager';
 import { InputManager } from '../input/InputManager';
 
 export class Player {
+  public profile: PlayerProfile;
   public position: Vector2;
   private spawnPoint: Vector2;
   public velocity: Vector2 = { x: 0, y: 0 };
-  // FIX: Added particles array to player to fix rendering error.
   public particles: Particle[] = [];
   
   public facingDirection: number = 1; // 1 for right, -1 for left
@@ -63,10 +64,10 @@ export class Player {
   
   private actionCallback: (action: string, data: any) => void;
 
-  public skinColor: string = '#c58c6b';
-  public shirtColor: string = '#4ca7a7';
-  public pantsColor: string = '#3a3a99';
-  public hairColor: string = '#46301f';
+  public skinColor: string;
+  public shirtColor: string;
+  public pantsColor: string;
+  public hairColor: string;
   
   public gamemode: GameMode = 'survival';
   public isFlying: boolean = false;
@@ -82,7 +83,13 @@ export class Player {
   public level: number = 0;
   public xpSystem: XPSystem;
 
-  constructor(spawnPoint: Vector2, world: ChunkSystem, mouseHandler: MouseHandler, touchHandler: TouchHandler, inputManager: InputManager, physics: PhysicsSystem, actionCallback: (action: string, data: any) => void) {
+  constructor(profile: PlayerProfile, spawnPoint: Vector2, world: ChunkSystem, mouseHandler: MouseHandler, touchHandler: TouchHandler, inputManager: InputManager, physics: PhysicsSystem, actionCallback: (action: string, data: any) => void) {
+    this.profile = profile;
+    this.skinColor = profile.skin.skinColor;
+    this.shirtColor = profile.skin.shirtColor;
+    this.pantsColor = profile.skin.pantsColor;
+    this.hairColor = profile.skin.hairColor;
+    
     this.position = { ...spawnPoint };
     this.spawnPoint = { ...spawnPoint };
     this.mouseHandler = mouseHandler;
@@ -122,7 +129,6 @@ export class Player {
         return;
     }
 
-    // FIX: Update particles
     for (let i = this.particles.length - 1; i >= 0; i--) {
         const p = this.particles[i];
         p.life -= 60 * deltaTime;
@@ -146,9 +152,9 @@ export class Player {
         this.physics.applyFriction(this);
         this.physics.updatePositionAndCollision(this);
     }
-    this.handleFallDamage();
+    this.handleFallDamage(camera);
     this.handleBlockInteraction(inputState, camera);
-    this.updateVitals(deltaTime);
+    this.updateVitals(deltaTime, camera);
     this.updateAnimationState(inputState);
     this.updateBlinking(deltaTime);
     this.updateEyeAndHeadDirection();
@@ -313,20 +319,19 @@ export class Player {
       this.velocity.x = inputState.moveX * speed;
       this.velocity.y = 0;
       if (inputState.jump.pressed) this.velocity.y = -speed;
-      if (inputState.sneak) this.velocity.y = speed;
+      // FIX: Access .pressed property for sneak state
+      if (inputState.sneak.pressed) this.velocity.y = speed;
     } else {
       this.velocity.x = inputState.moveX * speed;
     }
 
     if (inputState.moveX !== 0) this.facingDirection = Math.sign(inputState.moveX);
     
-    // FIX: Restore hotbar scrolling via mouse wheel.
     const scrollDelta = this.mouseHandler.consumeScroll();
     if (scrollDelta !== 0) {
         this.activeHotbarSlot = (this.activeHotbarSlot + scrollDelta + HOTBAR_SLOTS) % HOTBAR_SLOTS;
     }
 
-    // Add hotbar selection with number keys
     for (let i = 1; i <= 9; i++) {
         if (this.inputManager.isKeyPressed(i.toString())) {
             this.activeHotbarSlot = i - 1;
@@ -346,8 +351,10 @@ export class Player {
         this.fallDistance = 0;
       }
     }
-    this.isSneaking = inputState.sneak;
-    this.isSprinting = inputState.sprint && !this.isSneaking && inputState.moveX !== 0 && this.onGround;
+    // FIX: Access .pressed property for sneak state
+    this.isSneaking = inputState.sneak.pressed;
+    // FIX: Access .pressed property for sprint state
+    this.isSprinting = inputState.sprint.pressed && !this.isSneaking && inputState.moveX !== 0 && this.onGround;
     if (inputState.inventory) this.actionCallback('openInventory', {});
 
     if (inputState.drop) {
@@ -361,7 +368,6 @@ export class Player {
 
     const droppedItem: Item = { id: heldItem.id, count: 1 };
     
-    // In creative mode, a copy is dropped without removing from inventory.
     if (this.gamemode !== 'creative') {
         this.inventory.removeItem(this.activeHotbarSlot, 1);
     }
@@ -370,7 +376,7 @@ export class Player {
         item: droppedItem,
         position: {
             x: this.position.x + this.width / 2,
-            y: this.position.y + this.height * 0.4 // Drop from near shoulder height
+            y: this.position.y + this.height * 0.4
         },
         velocity: {
             x: this.facingDirection * 6,
@@ -379,7 +385,7 @@ export class Player {
     });
   }
 
-  private handleFallDamage(): void {
+  private handleFallDamage(camera: Camera): void {
     if (this.velocity.y > 0 && !this.onGround) {
         this.fallDistance += this.velocity.y;
     }
@@ -387,12 +393,10 @@ export class Player {
     if (this.justLanded) {
       const fallBlocks = this.fallDistance / BLOCK_SIZE;
       
-      // Player takes damage for falls of 4 blocks or more (i.e., more than 3 blocks).
       if (fallBlocks >= FALL_DAMAGE_START_BLOCKS) {
-        // Damage is 1 for every block past 3 blocks.
         const damage = Math.floor(fallBlocks - (FALL_DAMAGE_START_BLOCKS - 1));
         if (damage > 0) {
-            this.takeDamage(damage, "Player fell from a high place");
+            this.takeDamage(damage, "Player fell from a high place", camera);
         }
       }
       
@@ -400,16 +404,16 @@ export class Player {
       this.justLanded = false;
     }
     
-    // Also reset fall distance if on ground and not moving vertically.
     if (this.onGround && this.velocity.y === 0) {
         this.fallDistance = 0;
     }
   }
   
-  public takeDamage(amount: number, cause: string): void {
+  public takeDamage(amount: number, cause: string, camera: Camera): void {
     if (this.gamemode === 'creative' || this.isDead || this.gamemode === 'spectator') return;
     this.health -= amount;
     this.justTookDamage = true;
+    camera.triggerShake(5, 0.3);
     SoundManager.instance.playSound('player.hurt');
     if (this.health <= 0) {
       this.health = 0;
@@ -447,7 +451,6 @@ export class Player {
         this.breakingBlock = { x: blockX, y: blockY, progress: this.getMiningSpeed(blockType) };
       }
       if (this.breakingBlock.progress >= blockType.hardness) {
-        // FIX: Create particles when block is broken
         if (blockType.id !== BlockId.AIR) {
           for (let i = 0; i < PARTICLE_COUNT; i++) {
             this.particles.push({
@@ -555,13 +558,12 @@ export class Player {
     return speed * TOOL_EFFECTIVENESS_MULTIPLIER;
   }
 
-  private updateVitals(deltaTime: number): void {
+  private updateVitals(deltaTime: number, camera: Camera): void {
     if (this.gamemode === 'creative' || this.gamemode === 'spectator') return;
 
     this.timeSinceHungerTick += deltaTime;
     if (this.timeSinceHungerTick > 20) {
       this.timeSinceHungerTick = 0;
-      // TODO: Add saturation and exhaustion
       if (this.hunger > 0) this.hunger--;
     }
     
@@ -579,7 +581,7 @@ export class Player {
       this.timeSinceStarveDamage += deltaTime;
       if (this.timeSinceStarveDamage > 4) {
         this.timeSinceStarveDamage = 0;
-        this.takeDamage(1, "Player starved to death");
+        this.takeDamage(1, "Player starved to death", camera);
       }
     } else {
         this.timeSinceStarveDamage = 0;

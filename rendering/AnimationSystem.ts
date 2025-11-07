@@ -1,6 +1,8 @@
+
 import { Player } from '../entities/Player';
 import { BodyPart, PlayerPose, Vector2 } from '../types';
 import { BLOCK_SIZE, PLAYER_HEIGHT } from '../core/Constants';
+import { SettingsManager } from '../core/SettingsManager';
 
 export class AnimationSystem {
     private animationTimer: number = 0;
@@ -121,7 +123,14 @@ export class AnimationSystem {
     private createWalkingPose(player: Player): PlayerPose {
         const pose = this.createDefaultPose(player);
         const swingAngle = Math.sin(this.animationTimer * 10) * (player.isSprinting ? 0.8 : 0.6);
-        const bob = Math.abs(Math.sin(this.animationTimer * 10)) * 0.05 * BLOCK_SIZE;
+        
+        const { viewBobbing, viewBobbingIntensity } = SettingsManager.instance.settings.graphics;
+        const { reducedMotion } = SettingsManager.instance.settings.accessibility;
+        let bob = 0;
+        if (viewBobbing && !reducedMotion) {
+            bob = Math.abs(Math.sin(this.animationTimer * 10)) * 0.05 * BLOCK_SIZE * (viewBobbingIntensity / 100);
+        }
+
         pose.torso.y -= bob;
         pose.head.y -= bob;
         pose.torso.rotation = player.isSprinting ? 0.2 : 0.1;

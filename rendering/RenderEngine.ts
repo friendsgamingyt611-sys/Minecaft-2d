@@ -1,3 +1,4 @@
+
 import { Camera } from '../entities/Camera';
 import { ChunkSystem } from '../world/ChunkSystem';
 import { Player } from '../entities/Player';
@@ -90,13 +91,22 @@ export class RenderEngine {
     
     this.renderParticles(ctx, player);
     
-    if (SettingsManager.instance.settings.renderInteractiveArea) {
+    // FIX: Access setting from the correct 'gameplay' sub-object.
+    if (SettingsManager.instance.settings.gameplay.renderInteractiveArea) {
         this.renderInteractiveArea(ctx, player);
     }
     
     this.renderBlockHighlightAndBreaking(ctx, player, world);
 
     ctx.restore();
+    
+    // Apply brightness overlay after everything else is drawn
+    const brightness = SettingsManager.instance.settings.graphics.brightness / 100;
+    const alpha = (1 - brightness) * 0.8; // Max 80% darkness
+    if (alpha > 0.01) {
+        ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    }
   }
   
   private calculateLightMap(world: ChunkSystem, startX: number, endX: number, startY: number, endY: number): void {
