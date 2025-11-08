@@ -1,4 +1,3 @@
-
 import { SettingsManager } from "./SettingsManager";
 
 export class SoundManager {
@@ -25,6 +24,11 @@ export class SoundManager {
             'block.break.grass': 'https://aicore-world-assets.web.app/minecraft-2d/sounds/dirt_break.ogg',
             'block.place': 'https://aicore-world-assets.web.app/minecraft-2d/sounds/place.ogg',
             'ui.click': 'https://aicore-world-assets.web.app/minecraft-2d/sounds/ui_click.ogg',
+            'item.break': 'https://aicore-world-assets.web.app/minecraft-2d/sounds/item_break.ogg',
+            'item.break.warning': 'https://aicore-world-assets.web.app/minecraft-2d/sounds/ui_click.ogg',
+            'zombie.hurt': 'https://aicore-world-assets.web.app/minecraft-2d/sounds/zombie_hurt.ogg',
+            'zombie.death': 'https://aicore-world-assets.web.app/minecraft-2d/sounds/zombie_death.ogg',
+            'zombie.ambient': 'https://aicore-world-assets.web.app/minecraft-2d/sounds/zombie_ambient.ogg',
         };
 
         for (const [key, path] of Object.entries(soundList)) {

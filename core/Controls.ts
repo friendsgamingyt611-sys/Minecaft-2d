@@ -16,7 +16,7 @@ export class ControlManager {
     private isSneakToggled: boolean = false;
 
     // FEAT: Add state for double-tap to sprint
-    private lastHorizKeyPress = { key: '', time: 0 };
+    private lastMoveKeyPress = { key: '', time: 0 };
     private readonly DOUBLE_TAP_TIME = 300; // ms
 
     constructor(inputManager: InputManager, mouseHandler: MouseHandler, touchHandler: TouchHandler) {
@@ -74,7 +74,7 @@ export class ControlManager {
         
         // Final state processing
         // FEAT: Sprint is cancelled when movement stops, just like Minecraft
-        if (this.inputState.moveX === 0) {
+        if (this.inputState.moveX === 0 && !this.inputState.jump.pressed) {
             this.isSprintToggled = false;
         }
 
@@ -96,17 +96,24 @@ export class ControlManager {
         let didDoubleTap = false;
         const now = Date.now();
         if (this.inputManager.isKeyPressed('a')) {
-            if (this.lastHorizKeyPress.key === 'a' && now - this.lastHorizKeyPress.time < this.DOUBLE_TAP_TIME) {
+            if (this.lastMoveKeyPress.key === 'a' && now - this.lastMoveKeyPress.time < this.DOUBLE_TAP_TIME) {
                 didDoubleTap = true;
             }
-            this.lastHorizKeyPress = { key: 'a', time: now };
+            this.lastMoveKeyPress = { key: 'a', time: now };
         }
         if (this.inputManager.isKeyPressed('d')) {
-            if (this.lastHorizKeyPress.key === 'd' && now - this.lastHorizKeyPress.time < this.DOUBLE_TAP_TIME) {
+            if (this.lastMoveKeyPress.key === 'd' && now - this.lastMoveKeyPress.time < this.DOUBLE_TAP_TIME) {
                 didDoubleTap = true;
             }
-            this.lastHorizKeyPress = { key: 'd', time: now };
+            this.lastMoveKeyPress = { key: 'd', time: now };
         }
+        if (this.inputManager.isKeyPressed('w') || this.inputManager.isKeyPressed('arrowup')) {
+            if (this.lastMoveKeyPress.key === 'w' && now - this.lastMoveKeyPress.time < this.DOUBLE_TAP_TIME) {
+                didDoubleTap = true;
+            }
+            this.lastMoveKeyPress = { key: 'w', time: now };
+        }
+
         if (didDoubleTap) {
             this.isSprintToggled = true;
         }

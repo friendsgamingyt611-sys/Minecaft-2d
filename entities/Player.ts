@@ -1,4 +1,4 @@
-import { Vector2, BlockId, Particle, Item, ItemId, GameMode, InputState, BlockType, PlayerData, PlayerProfile } from '../types';
+import { Vector2, BlockId, Item, ItemId, GameMode, InputState, BlockType, PlayerData, PlayerProfile } from '../types';
 import { ChunkSystem } from '../world/ChunkSystem';
 import { 
     PLAYER_MOVE_SPEED, GRAVITY, PLAYER_JUMP_FORCE, PLAYER_FRICTION,
@@ -21,13 +21,11 @@ import { InputManager } from '../input/InputManager';
 import { ItemRegistry } from '../inventory/ItemRegistry';
 import { ItemEntity } from './ItemEntity';
 import { GAME_MODE_CONFIGS } from '../core/GameModes';
+import { LivingEntity } from './LivingEntity';
 
-export class Player {
+export class Player extends LivingEntity {
   public profile: PlayerProfile;
-  public position: Vector2;
   private spawnPoint: Vector2;
-  public velocity: Vector2 = { x: 0, y: 0 };
-  public particles: Particle[] = [];
   
   public facingDirection: number = 1; // 1 for right, -1 for left
   
@@ -36,7 +34,6 @@ export class Player {
   private inputManager: InputManager;
   public world: ChunkSystem;
   private physics: PhysicsSystem;
-  public onGround: boolean = false;
   private fallDistance: number = 0;
   public justLanded: boolean = false;
   
@@ -48,7 +45,6 @@ export class Player {
   
   public activeHotbarSlot: number = 0;
 
-  public health: number = MAX_HEALTH;
   public hunger: number = MAX_HUNGER;
   public isDead: boolean = false;
   public causeOfDeath: string = "Player died";
@@ -92,13 +88,15 @@ export class Player {
   public xpSystem: XPSystem;
 
   constructor(profile: PlayerProfile, spawnPoint: Vector2, world: ChunkSystem, mouseHandler: MouseHandler, touchHandler: TouchHandler, inputManager: InputManager, physics: PhysicsSystem, actionCallback: (action: string, data: any) => void) {
+    super(spawnPoint, PLAYER_WIDTH, PLAYER_HEIGHT, MAX_HEALTH);
+    this.maxHealth = MAX_HEALTH;
+
     this.profile = profile;
     this.skinColor = profile.skin.skinColor;
     this.shirtColor = profile.skin.shirtColor;
     this.pantsColor = profile.skin.pantsColor;
     this.hairColor = profile.skin.hairColor;
     
-    this.position = { ...spawnPoint };
     this.spawnPoint = { ...spawnPoint };
     this.mouseHandler = mouseHandler;
     this.touchHandler = touchHandler;
@@ -114,6 +112,11 @@ export class Player {
     this.xpSystem = new XPSystem();
     this.initializeInventory();
   }
+
+  // FIX: Implement the abstract render method from LivingEntity. Player rendering is handled by PlayerRenderer.
+  public render(_ctx: CanvasRenderingContext2D): void {}
+
+  protected updateAI(deltaTime: number): void {}
 
   public setGameMode(newMode: GameMode) {
       if (this.gamemode === newMode) return;
@@ -164,14 +167,21 @@ export class Player {
     // this.inventory.setItem(2, {id: ItemId.WOODEN_SHOVEL, count: 1});
   }
   
-  public get width(): number { return PLAYER_WIDTH; }
-  public get height(): number { return this.isSneaking ? PLAYER_SNEAK_HEIGHT : PLAYER_HEIGHT; }
+  // FIX: Satisfy inheritance from LivingEntity. Player-specific update is handled by updatePlayer.
+  public update(_deltaTime: number, _physics: PhysicsSystem): void {
+      // This method is required by LivingEntity, but player logic is handled in `updatePlayer`
+      // which is called directly by the GameScene.
+  }
 
-  update(deltaTime: number, camera: Camera, inputState: InputState): void {
+  public updatePlayer(deltaTime: number, camera: Camera, inputState: InputState): void {
     if (this.isDead) {
         this.animationState = 'dying';
         return;
     };
+
+    if (this.attackCooldown > 0) {
+        this.attackCooldown -= deltaTime;
+    }
     
     // Spectator has very simple update loop
     if (this.gamemode === 'spectator') {
@@ -202,9 +212,9 @@ export class Player {
         this.position.y += this.velocity.y;
         this.onGround = false;
     } else {
-        this.physics.applyGravity(this);
-        this.physics.applyFriction(this);
-        this.physics.updatePositionAndCollision(this);
+        this.physics.applyGravity(this as any);
+        this.physics.applyFriction(this as any);
+        this.physics.updatePositionAndCollision(this as any);
     }
     this.handleFallDamage(camera);
     this.handleBlockInteraction(inputState, camera);
@@ -215,6 +225,11 @@ export class Player {
 
     const collectedXP = this.xpSystem.update(deltaTime, {x: this.position.x + this.width / 2, y: this.position.y + this.height / 2});
     if(collectedXP > 0) this.addXP(collectedXP);
+  }
+
+  public getAttackCooldownPercent(): number {
+      if (this.attackCooldown <= 0) return 1;
+      return 1 - (this.attackCooldown / this.maxAttackCooldown);
   }
   
   public addXP(amount: number): void {
@@ -406,6 +421,8 @@ export class Player {
     }
 
     this.isSneaking = inputState.sneak.pressed;
+    // FIX: Update player height dynamically when sneak state changes, instead of using an accessor.
+    this.height = this.isSneaking ? PLAYER_SNEAK_HEIGHT : PLAYER_HEIGHT;
     this.isSprinting = inputState.sprint.pressed && !this.isSneaking && inputState.moveX !== 0 && this.onGround;
 
     if (inputState.drop) {
@@ -518,11 +535,22 @@ export class Player {
     }
   }
   
-  public takeDamage(amount: number, cause: string, camera: Camera): void {
+  public override takeDamage(amount: number, cause: string, camera?: Camera): void {
     if (!this.takesDamage || this.isDead) return;
-    this.health -= amount;
+
+    const armorProtection = this.calculateArmorProtection();
+    const damageReduction = armorProtection * 0.04; // 4% per point
+    const reducedDamage = Math.round(amount * (1 - damageReduction));
+    
+    this.health -= reducedDamage;
     this.justTookDamage = true;
-    camera.triggerShake(5, 0.3);
+    this.damageFlashTimer = 0.2; // From LivingEntity
+
+    if (this.gamemode === 'survival') {
+        this.damageArmor(Math.max(1, Math.floor(reducedDamage / 4)));
+    }
+
+    if (camera) camera.triggerShake(5, 0.3);
     SoundManager.instance.playSound('player.hurt');
     if (this.health <= 0) {
       this.health = 0;
@@ -531,7 +559,8 @@ export class Player {
     }
   }
   
-  private die(): void {
+  protected override die(): void {
+    super.die(); // Handle particles and isAlive flag
     this.isDead = true;
     SoundManager.instance.playSound('player.death');
   }
@@ -589,6 +618,17 @@ export class Player {
         }
 
         this.world.setBlock(blockX, blockY, BlockId.AIR);
+
+        if (this.gamemode === 'survival') {
+            const heldItem = this.inventory.getItem(this.activeHotbarSlot);
+            if (heldItem) {
+                const itemInfo = ItemRegistry.getItemInfo(heldItem.id);
+                if (itemInfo?.toolInfo) {
+                    this.consumeDurability(heldItem, 1);
+                }
+            }
+        }
+
         if (drop && this.gamemode === 'survival') {
           // Special drop logic
           if (blockType.id === BlockId.GRAVEL && Math.random() < 0.1) {
@@ -628,7 +668,7 @@ export class Player {
         const itemInfo = ItemRegistry.getItemInfo(heldItem.id);
         if (itemInfo?.toolInfo?.type === 'hoe' && (blockId === BlockId.DIRT || blockId === BlockId.GRASS)) {
             this.world.setBlock(blockX, blockY, BlockId.FARMLAND);
-            // TODO: Damage tool
+            if(this.gamemode === 'survival') this.consumeDurability(heldItem, 1);
             return;
         }
       }
@@ -777,6 +817,124 @@ export class Player {
       this.animationState = this.isSprinting ? 'sprinting' : 'walking';
     } else {
       this.animationState = 'idle';
+    }
+  }
+
+  // --- COMBAT & DURABILITY ---
+
+  public attackEntity(target: LivingEntity, camera: Camera): void {
+      if (!this.canAttack()) return;
+
+      const heldItem = this.inventory.getItem(this.activeHotbarSlot);
+      const itemInfo = heldItem ? ItemRegistry.getItemInfo(heldItem.id) : null;
+      
+      let baseDamage = 1; // Fist damage
+      if (itemInfo?.toolInfo?.type === 'sword') {
+          baseDamage = itemInfo.toolInfo.damage || 4;
+      } else if (itemInfo?.toolInfo) {
+          baseDamage = 2; // Tools do reduced damage
+      }
+      
+      const sprintMultiplier = this.isSprinting ? 1.5 : 1.0;
+      const isCritical = !this.onGround && this.velocity.y > 0 && Math.random() < 0.2;
+      const criticalMultiplier = isCritical ? 1.5 : 1.0;
+      
+      const finalDamage = Math.round(baseDamage * sprintMultiplier * criticalMultiplier);
+      
+      target.takeDamage(finalDamage, "Player", camera);
+      
+      if (heldItem && itemInfo?.toolInfo) {
+          this.consumeDurability(heldItem, 1);
+      }
+      
+      const knockbackDirection = Math.sign(target.position.x - this.position.x);
+      const knockbackForce = this.isSprinting ? 8 : 5;
+      target.velocity.x = knockbackDirection * knockbackForce;
+      target.velocity.y = -4;
+      
+      if (isCritical) {
+          for (let i = 0; i < 15; i++) { this.particles.push({ x: target.position.x + Math.random() * target.width, y: target.position.y + Math.random() * target.height, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4 - 2, life: 20, color: '#f5d63d', size: Math.random() * 5 + 3 }); }
+      }
+      
+      this.attackCooldown = 0.6;
+  }
+
+ private consumeDurability(item: Item, amount: number): void {
+    if (this.gamemode === 'creative' || !item.durability) return;
+    
+    const itemInfo = ItemRegistry.getItemInfo(item.id);
+    if (!itemInfo?.toolInfo) return;
+
+    if (item.durability === undefined) {
+      item.durability = itemInfo.toolInfo.durability;
+    }
+    
+    item.durability -= amount;
+
+    const maxDurability = itemInfo.toolInfo.durability;
+    if (item.durability <= maxDurability * 0.1 && item.durability > 0) {
+      this.actionCallback('showNotification', { message: `${itemInfo.name} is about to break!` });
+      SoundManager.instance.playSound('item.break.warning');
+    }
+    
+    if (item.durability <= 0) {
+      this.inventory.setItem(this.activeHotbarSlot, null);
+      SoundManager.instance.playSound('item.break');
+      this.actionCallback('showNotification', { message: `${itemInfo.name} broke!` });
+      
+      for (let i = 0; i < 10; i++) {
+        this.particles.push({
+          x: this.position.x + this.width / 2,
+          y: this.position.y + this.height / 2,
+          vx: (Math.random() - 0.5) * 8,
+          vy: (Math.random() - 0.5) * 8 - 3,
+          life: 30,
+          color: '#8B4513',
+          size: 4
+        });
+      }
+    }
+  }
+
+  public calculateArmorProtection(): number {
+      let totalProtection = 0;
+      for (let i = 0; i < ARMOR_SLOTS; i++) {
+          const armorPiece = this.armorInventory.getItem(i);
+          if (armorPiece) {
+              const itemInfo = ItemRegistry.getItemInfo(armorPiece.id);
+              if (itemInfo?.armorInfo) {
+                  totalProtection += itemInfo.armorInfo.protection;
+              }
+          }
+      }
+      return Math.min(totalProtection, 20);
+  }
+
+  private damageArmor(amount: number): void {
+      for (let i = 0; i < ARMOR_SLOTS; i++) {
+          const armorPiece = this.armorInventory.getItem(i);
+          if (armorPiece) {
+              this.consumeArmorDurability(armorPiece, amount, i);
+          }
+      }
+  }
+
+  private consumeArmorDurability(item: Item, amount: number, slot: number): void {
+    if (this.gamemode === 'creative') return;
+      
+    const itemInfo = ItemRegistry.getItemInfo(item.id);
+     if (!itemInfo?.armorInfo) return;
+
+    if (item.durability === undefined) {
+        item.durability = itemInfo.armorInfo.durability;
+    }
+    
+    item.durability -= amount;
+    
+    if (item.durability <= 0) {
+        this.armorInventory.setItem(slot, null);
+        SoundManager.instance.playSound('item.break');
+        this.actionCallback('showNotification', { message: `${itemInfo.name} broke!` });
     }
   }
 

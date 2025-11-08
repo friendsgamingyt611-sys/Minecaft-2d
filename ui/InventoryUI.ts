@@ -3,7 +3,7 @@ import { CraftingSystem } from '../crafting/CraftingSystem';
 import { MouseHandler } from '../input/MouseHandler';
 import { ARMOR_SLOTS, CRAFTING_GRID_SLOTS } from '../core/Constants';
 // FIX: Add missing import for SlotType.
-import { Item, ItemId, Vector2, ItemCategory, PlayerPose, BodyPart, SlotType } from '../types';
+import { Item, ItemId, Vector2, ItemCategory, PlayerPose, BodyPart, SlotType, Recipe } from '../types';
 import { Inventory } from '../world/Inventory';
 import { getBlockType } from '../world/BlockRegistry';
 import { TouchHandler } from '../input/TouchHandler';
@@ -37,6 +37,7 @@ export class InventoryUI {
     private world: ChunkSystem;
     private playerRenderer: PlayerRenderer;
     private actionCallback: (action: string, data: any) => void;
+    private canvas: HTMLCanvasElement;
     
     private currentView: UIView = 'none';
     private uiContext: UIContext | null = null;
@@ -53,12 +54,14 @@ export class InventoryUI {
 
     private craftingGrid: Inventory;
     private craftResult: Item | null = null;
+    private recipeViewItem: Recipe | null = null;
 
     private slotRects: Slot[] = [];
     
     private categoryIcons: Map<ItemCategory, ItemId> = new Map([
         ['Building Blocks', ItemId.GRASS],
-        ['Decorations', ItemId.CRAFTING_TABLE],
+        ['Decorations', ItemId.OAK_SAPLING],
+        ['Redstone', ItemId.REDSTONE_DUST],
         ['Tools & Combat', ItemId.IRON_SWORD],
         ['Materials', ItemId.IRON_INGOT],
     ]);
@@ -73,6 +76,7 @@ export class InventoryUI {
         this.playerRenderer = new PlayerRenderer();
         this.craftingGrid = new Inventory(CRAFTING_GRID_SLOTS);
         this.actionCallback = actionCallback;
+        this.canvas = document.querySelector('canvas')!;
         this.updateCreativeItems();
     }
 
@@ -110,6 +114,7 @@ export class InventoryUI {
         this.currentView = 'none';
         this.uiContext = null;
         this.slotRects = [];
+        this.recipeViewItem = null;
     }
 
     public update() {
@@ -120,6 +125,8 @@ export class InventoryUI {
         
         const pos = this.mouseHandler.position;
         this.hoverItem = null;
+        if(this.recipeViewItem) return; // Don't show tooltips over recipe view
+
         const slot = this.getSlotAt(pos.x, pos.y);
         if (slot && slot.inventory.getItem(slot.slotIndex)) {
             const item = slot.inventory.getItem(slot.slotIndex)!;
@@ -164,6 +171,16 @@ export class InventoryUI {
     private handlePointerInput() {
         const pos = this.mouseHandler.position;
 
+        if (this.recipeViewItem && this.mouseHandler.isLeftClicked) {
+            const panelW = 300, panelH = 200;
+            const panelX = (this.canvas.width - panelW) / 2;
+            const panelY = (this.canvas.height - panelH) / 2;
+            if (!(pos.x > panelX && pos.x < panelX + panelW && pos.y > panelY && pos.y < panelY + panelH)) {
+                this.recipeViewItem = null;
+                return;
+            }
+        }
+
         if (this.mouseHandler.isLeftClicked) {
              const clickedSlot = this.getSlotAt(pos.x, pos.y);
              if (clickedSlot) {
@@ -182,18 +199,25 @@ export class InventoryUI {
 
             const grid = this.creativeGridRect;
             if(pos.x > grid.x && pos.x < grid.x + grid.w && pos.y > grid.y && pos.y < grid.y + grid.h) {
-                if (this.player.gamemode === 'survival') return; // Cannot take items from recipe book
-                
                 const col = Math.floor((pos.x - grid.x) / 54);
                 const row = Math.floor((pos.y - grid.y + this.creativeScrollY) / 54);
-                const index = row * 9 + col;
+                const index = row * 10 + col;
                 
                 if (index >= 0 && index < this.creativeVisibleItems.length) {
                     const itemId = this.creativeVisibleItems[index];
                     const itemInfo = ItemRegistry.getItemInfo(itemId);
+
+                    if (this.player.gamemode === 'survival') {
+                        const hasItems = this.player.inventory.getAllItemIds();
+                        if (!hasItems.has(itemId)) {
+                            this.recipeViewItem = this.craftingSystem.findRecipeByResult(itemId);
+                            return; 
+                        }
+                    }
+
                     if (itemInfo) {
                         this.draggingItem = {
-                            item: { id: itemId, count: itemInfo.maxStackSize },
+                            item: { id: itemId, count: this.mouseHandler.isMiddleDown ? 1 : itemInfo.maxStackSize },
                             fromSlot: { inventory: new Inventory(1), slotIndex: -1, type: 'creative_display', rect: {x:0,y:0,w:0,h:0} },
                             originalPosition: pos
                         };
@@ -291,6 +315,10 @@ export class InventoryUI {
             case 'furnace':
                 this.renderFurnace(ctx);
                 break;
+        }
+        
+        if (this.recipeViewItem) {
+            this.renderRecipeView(ctx);
         }
         
         if (this.draggingItem) {
@@ -518,6 +546,27 @@ export class InventoryUI {
         }
     }
     
+    private renderDurabilityBar(ctx: CanvasRenderingContext2D, item: Item, x: number, y: number, width: number): void {
+        const itemInfo = ItemRegistry.getItemInfo(item.id);
+        const maxDurability = itemInfo?.toolInfo?.durability || itemInfo?.armorInfo?.durability;
+        
+        if (item.durability === undefined || !maxDurability || item.durability >= maxDurability) return;
+
+        const durabilityPercent = item.durability / maxDurability;
+        const barHeight = 4;
+        const barY = y + width - barHeight - 2;
+        
+        let barColor = '#00FF00'; // Green
+        if (durabilityPercent < 0.5) barColor = '#FFFF00'; // Yellow
+        if (durabilityPercent < 0.25) barColor = '#FF0000'; // Red
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.fillRect(x + 2, barY, width - 4, barHeight);
+        
+        ctx.fillStyle = barColor;
+        ctx.fillRect(x + 2, barY, (width - 4) * durabilityPercent, barHeight);
+    }
+
     private renderItem(ctx: CanvasRenderingContext2D, item: Item, x: number, y: number, size: number, isUnowned: boolean) {
         const itemInfo = ItemRegistry.getItemInfo(item.id);
         if(!itemInfo) return;
@@ -545,6 +594,9 @@ export class InventoryUI {
             ctx.fillStyle = '#ffffff';
             ctx.fillText(item.count.toString(), x + size - 1, y + size - 1);
         }
+
+        this.renderDurabilityBar(ctx, item, x, y, size);
+
         ctx.restore();
 
         if (isUnowned && this.player.gamemode !== 'creative') {
@@ -668,5 +720,38 @@ export class InventoryUI {
         this.playerRenderer.render(ctx, this.player, this.getPlayerPreviewPose());
         ctx.restore();
     }
+    
+    private renderRecipeView(ctx: CanvasRenderingContext2D) {
+        if (!this.recipeViewItem) return;
 
+        const panelW = 300, panelH = 200;
+        const panelX = (ctx.canvas.width - panelW) / 2;
+        const panelY = (ctx.canvas.height - panelH) / 2;
+
+        this.renderPanel(ctx, panelX, panelY, panelW, panelH);
+        
+        const resultInfo = ItemRegistry.getItemInfo(this.recipeViewItem.result.id)!;
+        ctx.font = "24px Minecraftia";
+        ctx.fillStyle = '#373737';
+        ctx.textAlign = 'center';
+        ctx.fillText(resultInfo.name, panelX + panelW/2, panelY + 30);
+        
+        const shape = this.recipeViewItem.shape;
+        const recipeH = shape.length;
+        const recipeW = shape[0].length;
+        const slotSize = 40;
+        const gridW = recipeW * slotSize;
+        const gridX = panelX + (panelW/2 - gridW - 30);
+        const gridY = panelY + 60;
+
+        for(let r=0; r < recipeH; r++) {
+            for (let c=0; c < recipeW; c++) {
+                const itemId = shape[r][c];
+                this.renderSlot(ctx, gridX + c*slotSize, gridY + r*slotSize, itemId ? {id: itemId, count: 1} : null);
+            }
+        }
+        
+        this.renderCraftingArrow(ctx, gridX + gridW + 10, gridY + (recipeH * slotSize)/2);
+        this.renderSlot(ctx, gridX + gridW + 60, gridY + (recipeH*slotSize - 52)/2, this.recipeViewItem.result, true);
+    }
 }

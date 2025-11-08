@@ -3,6 +3,7 @@ import { ChunkSystem } from '../world/ChunkSystem';
 import { GRAVITY, PLAYER_FRICTION, BLOCK_SIZE, TERMINAL_VELOCITY } from '../core/Constants';
 import { getBlockType } from '../world/BlockRegistry';
 import { ItemEntity } from './ItemEntity';
+import { Zombie } from './mobs/Zombie';
 
 interface Rect {
     x: number;
@@ -11,7 +12,7 @@ interface Rect {
     height: number;
 }
 
-type PhysicsEntity = Player | ItemEntity;
+type PhysicsEntity = Player | ItemEntity | Zombie;
 
 export class PhysicsSystem {
   private world: ChunkSystem;
@@ -32,7 +33,7 @@ export class PhysicsSystem {
     entity.velocity.x *= PLAYER_FRICTION;
   }
 
-  updatePositionAndCollision(entity: Player | ItemEntity) {
+  updatePositionAndCollision(entity: Player | ItemEntity | Zombie) {
       const isPlayer = entity instanceof Player;
       if (isPlayer && (entity as Player).gamemode === 'spectator') {
           entity.position.x += entity.velocity.x;
@@ -49,8 +50,10 @@ export class PhysicsSystem {
       if(isPlayer) {
         (entity as Player).justLanded = !(entity as Player).onGround && onGround;
         (entity as Player).onGround = onGround;
-      } else {
+      } else if (entity instanceof ItemEntity) {
         (entity as ItemEntity).onGround = onGround;
+      } else {
+        (entity as Zombie).onGround = onGround;
       }
   }
 

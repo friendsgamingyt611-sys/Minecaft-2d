@@ -1,4 +1,5 @@
 
+
 import { ItemId, ItemInfo, BlockId } from '../types';
 import { ITEM_CATEGORIES } from './ItemClassification';
 
@@ -38,7 +39,7 @@ const ITEM_INFO_MAP: Map<ItemId, ItemInfo> = new Map([
     [ItemId.IRON_ORE, { name: 'Iron Ore', maxStackSize: 64, blockId: BlockId.IRON_ORE, category: 'Materials' }],
     [ItemId.GOLD_ORE, { name: 'Gold Ore', maxStackSize: 64, blockId: BlockId.GOLD_ORE, category: 'Materials' }],
     [ItemId.DIAMOND_ORE, { name: 'Diamond Ore', maxStackSize: 64, blockId: BlockId.DIAMOND_ORE, category: 'Materials' }],
-    [ItemId.REDSTONE_ORE, { name: 'Redstone Ore', maxStackSize: 64, blockId: BlockId.REDSTONE_ORE, category: 'Materials' }],
+    [ItemId.REDSTONE_ORE, { name: 'Redstone Ore', maxStackSize: 64, blockId: BlockId.REDSTONE_ORE, category: 'Redstone' }],
     [ItemId.EMERALD_ORE, { name: 'Emerald Ore', maxStackSize: 64, blockId: BlockId.EMERALD_ORE, category: 'Materials' }],
     [ItemId.LAPIS_LAZULI_ORE, { name: 'Lapis Lazuli Ore', maxStackSize: 64, blockId: BlockId.LAPIS_LAZULI_ORE, category: 'Materials' }],
     [ItemId.STICK, { name: 'Stick', maxStackSize: 64, category: 'Materials' }],
@@ -49,10 +50,11 @@ const ITEM_INFO_MAP: Map<ItemId, ItemInfo> = new Map([
     [ItemId.IRON_INGOT, { name: 'Iron Ingot', maxStackSize: 64, category: 'Materials' }],
     [ItemId.RAW_GOLD, { name: 'Raw Gold', maxStackSize: 64, category: 'Materials' }],
     [ItemId.GOLD_INGOT, { name: 'Gold Ingot', maxStackSize: 64, category: 'Materials' }],
-    [ItemId.REDSTONE_DUST, { name: 'Redstone Dust', maxStackSize: 64, category: 'Materials' }],
+    [ItemId.REDSTONE_DUST, { name: 'Redstone Dust', maxStackSize: 64, category: 'Redstone' }],
     [ItemId.LAPIS_LAZULI, { name: 'Lapis Lazuli', maxStackSize: 64, category: 'Materials' }],
     [ItemId.FLINT, { name: 'Flint', maxStackSize: 64, category: 'Materials' }],
     [ItemId.LEATHER, { name: 'Leather', maxStackSize: 64, category: 'Materials' }],
+    [ItemId.ROTTEN_FLESH, { name: 'Rotten Flesh', maxStackSize: 64, category: 'Foodstuffs' }],
     
     // Tools & Combat
     [ItemId.WOODEN_PICKAXE, { name: 'Wooden Pickaxe', maxStackSize: 1, toolInfo: { type: 'pickaxe', tier: 'wood', durability: 59 }, category: 'Tools & Combat' }],

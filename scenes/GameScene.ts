@@ -9,7 +9,7 @@ import { InventoryUI } from '../ui/InventoryUI';
 import { CraftingSystem } from '../crafting/CraftingSystem';
 import { ItemEntity } from '../entities/ItemEntity';
 import { PhysicsSystem } from '../entities/PhysicsSystem';
-import { BLOCK_SIZE, HOTBAR_SLOTS, MAX_HEALTH, MAX_HUNGER } from '../core/Constants';
+import { BLOCK_SIZE, HOTBAR_SLOTS, MAX_HEALTH, MAX_HUNGER, REACH_DISTANCE } from '../core/Constants';
 import { TitleScene } from './TitleScene';
 import { ControlManager } from '../core/Controls';
 import { GameMode, InputState, Vector2, WorldData } from '../types';
@@ -20,6 +20,9 @@ import { WorldStorage } from '../core/WorldStorage';
 import { SoundManager } from '../core/SoundManager';
 import { ProfileManager } from '../core/ProfileManager';
 import { ChatUI } from '../ui/ChatUI';
+import { LivingEntity } from '../entities/LivingEntity';
+import { MobSpawner } from '../world/MobSpawner';
+import { Zombie } from '../entities/mobs/Zombie';
 
 export class GameScene implements Scene {
   private sceneManager: SceneManager;
@@ -36,6 +39,8 @@ export class GameScene implements Scene {
   private craftingSystem: CraftingSystem;
   private itemEntities: ItemEntity[] = [];
   private physicsSystem: PhysicsSystem;
+  private mobs: LivingEntity[] = [];
+  private mobSpawner: MobSpawner;
 
   private isPaused: boolean = false;
   
@@ -52,6 +57,13 @@ export class GameScene implements Scene {
   // Auto-save
   private timeSinceLastSave: number = 0;
   private readonly AUTO_SAVE_INTERVAL = 30; // seconds
+  
+  // Gamemode switching
+  private isSwitchingGamemode: boolean = false;
+  private gamemodeSwitchTimer: number = 0;
+  private readonly GAMEMODE_SWITCH_DURATION = 0.5; // seconds
+  private nextGamemode: GameMode = 'survival';
+
 
   constructor(sceneManager: SceneManager, worldData: WorldData) {
     this.sceneManager = sceneManager;
@@ -64,6 +76,7 @@ export class GameScene implements Scene {
     this.world.fromData(this.worldData.chunks);
 
     this.physicsSystem = new PhysicsSystem(this.world);
+    this.mobSpawner = new MobSpawner(this.world);
     
     const activeProfile = ProfileManager.instance.getActiveProfile();
     if (!activeProfile) {
@@ -93,14 +106,13 @@ export class GameScene implements Scene {
   }
   
   private cycleGamemode() {
-      const modes: GameMode[] = ['survival', 'creative', 'spectator'];
-      const currentIndex = modes.indexOf(this.player.gamemode);
-      const nextIndex = (currentIndex + 1) % modes.length;
-      const newMode = modes[nextIndex];
-      this.player.setGameMode(newMode);
-      this.worldData.metadata.gameMode = newMode;
-      const capitalized = newMode.charAt(0).toUpperCase() + newMode.slice(1);
-      this.hud.showNotification(`Game mode set to ${capitalized}`);
+    if (this.isSwitchingGamemode) return;
+    const modes: GameMode[] = ['survival', 'creative', 'spectator'];
+    const currentIndex = modes.indexOf(this.player.gamemode);
+    const nextIndex = (currentIndex + 1) % modes.length;
+    this.nextGamemode = modes[nextIndex];
+    this.isSwitchingGamemode = true;
+    this.gamemodeSwitchTimer = 0;
   }
 
   private setupMenus(canvas: HTMLCanvasElement) {
@@ -205,10 +217,29 @@ export class GameScene implements Scene {
         this.itemEntities.push(itemEntity);
         break;
       }
+      case 'showNotification':
+          this.hud.showNotification(data.message);
+          break;
     }
   };
   
   update(deltaTime: number): void {
+    if (this.isSwitchingGamemode) {
+        this.gamemodeSwitchTimer += deltaTime;
+        const halfDuration = this.GAMEMODE_SWITCH_DURATION / 2;
+        if (this.gamemodeSwitchTimer >= halfDuration && this.player.gamemode !== this.nextGamemode) {
+            this.player.setGameMode(this.nextGamemode);
+            this.worldData.metadata.gameMode = this.nextGamemode;
+            const capitalized = this.nextGamemode.charAt(0).toUpperCase() + this.nextGamemode.slice(1);
+            this.hud.showNotification(`Game mode set to ${capitalized}`);
+        }
+        if (this.gamemodeSwitchTimer >= this.GAMEMODE_SWITCH_DURATION) {
+            this.isSwitchingGamemode = false;
+        }
+        this.camera.update(deltaTime); // Keep camera smooth
+        return; // Block all other game updates
+    }
+
     const inputState = this.controlManager.update();
 
     if (this.player.isDead) {
@@ -261,7 +292,8 @@ export class GameScene implements Scene {
         return;
     }
     
-    this.player.update(deltaTime, this.camera, inputState);
+    // FIX: Changed player.update to player.updatePlayer to resolve signature conflict with LivingEntity.
+    this.player.updatePlayer(deltaTime, this.camera, inputState);
     this.world.update(this.player.position);
     this.world.updateBlockEntities(deltaTime);
     this.camera.update(deltaTime);
@@ -274,6 +306,44 @@ export class GameScene implements Scene {
     });
     this.itemEntities = this.itemEntities.filter(e => !e.shouldBeRemoved());
     
+    if (this.player.gamemode === 'survival') {
+      this.mobs.forEach(mob => {
+        if (mob instanceof Zombie) mob.setTarget(this.player);
+        mob.update(deltaTime, this.physicsSystem);
+
+        if (this.player.canAttack() && inputState.destroy) {
+          const dx = mob.position.x - this.player.position.x;
+          const dy = mob.position.y - this.player.position.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist < REACH_DISTANCE) {
+            this.player.attackEntity(mob, this.camera);
+          }
+        }
+      });
+
+      this.mobs = this.mobs.filter(mob => {
+        if (mob.shouldBeRemoved()) {
+          if (mob instanceof Zombie) {
+            const loot = mob.dropLoot();
+            loot.forEach(item => {
+              this.onPlayerAction('dropItem', {
+                item,
+                position: { x: mob.position.x + mob.width / 2, y: mob.position.y + mob.height / 2 },
+                velocity: { x: (Math.random() - 0.5) * 5, y: -Math.random() * 5 }
+              });
+            });
+            this.player.xpSystem.spawnXP({ x: mob.position.x + mob.width / 2, y: mob.position.y + mob.height / 2 }, 5);
+          }
+          return false;
+        }
+        return true;
+      });
+
+      this.mobSpawner.update(deltaTime, this.player, this.mobs as Zombie[]);
+    }
+
+
     this.timeSinceLastSave += deltaTime;
     if (this.timeSinceLastSave > this.AUTO_SAVE_INTERVAL) {
         this.saveGame();
@@ -320,6 +390,8 @@ export class GameScene implements Scene {
 
     this.renderer.render(ctx, this.world, this.player, this.sceneManager.mouseHandler, this.animationSystem, this.itemEntities);
     
+    this.mobs.forEach(mob => mob.render(ctx));
+
     if (this.isPaused) {
       this.renderPauseMenu(ctx);
     } else {
@@ -345,6 +417,22 @@ export class GameScene implements Scene {
     }
 
     this.chatUI.render(ctx);
+
+    if (this.isSwitchingGamemode) {
+        this.renderGamemodeTransition(ctx);
+    }
+  }
+
+  private renderGamemodeTransition(ctx: CanvasRenderingContext2D) {
+    let alpha = 0;
+    const halfDuration = this.GAMEMODE_SWITCH_DURATION / 2;
+    if (this.gamemodeSwitchTimer < halfDuration) {
+        alpha = this.gamemodeSwitchTimer / halfDuration; // Fade in
+    } else {
+        alpha = 1 - ((this.gamemodeSwitchTimer - halfDuration) / halfDuration); // Fade out
+    }
+    ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   }
 
   private renderMenu(ctx: CanvasRenderingContext2D, title: string, buttons: any[]) {

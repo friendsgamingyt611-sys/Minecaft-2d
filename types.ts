@@ -118,6 +118,7 @@ export enum ItemId {
   LEATHER_LEGGINGS = 298,
   LEATHER_BOOTS = 299,
   LAPIS_LAZULI = 300,
+  ROTTEN_FLESH = 301,
 }
 
 export type ToolType = 'pickaxe' | 'axe' | 'shovel' | 'sword' | 'hoe' | 'none';

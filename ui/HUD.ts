@@ -5,7 +5,10 @@ import { getBlockType } from '../world/BlockRegistry';
 import { TouchControlsUI } from './TouchControlsUI';
 import { SettingsManager } from '../core/SettingsManager';
 import { TouchHandler } from '../input/TouchHandler';
+// FIX: The `Item` type is defined in `types.ts`, not `ItemRegistry.ts`.
+// Updated imports to reflect the correct source for the `Item` interface.
 import { ItemRegistry } from '../inventory/ItemRegistry';
+import { Item } from '../types';
 
 export class HUD {
   private player: Player;
@@ -80,13 +83,16 @@ export class HUD {
     this.lastFrameTimes.push(now);
     this.fps = this.lastFrameTimes.length;
     
-    if (this.player.gamemode === 'survival') {
+    if (this.player.gamemode === 'survival' || this.player.gamemode === 'creative' && (this.player.health < MAX_HEALTH)) {
         this.renderHealthBar(ctx);
+    }
+    if (this.player.gamemode === 'survival') {
         this.renderHungerBar(ctx);
         this.renderXpBar(ctx);
     }
     
     this.renderHotbar(ctx);
+    this.renderAttackIndicator(ctx);
     
     if (SettingsManager.instance.getEffectiveControlScheme() === 'touch') {
         this.touchControlsUI.render(ctx, this.player);
@@ -204,6 +210,27 @@ export class HUD {
     }
   }
 
+    private renderDurabilityBar(ctx: CanvasRenderingContext2D, item: Item, x: number, y: number, width: number): void {
+        const itemInfo = ItemRegistry.getItemInfo(item.id);
+        const maxDurability = itemInfo?.toolInfo?.durability || itemInfo?.armorInfo?.durability;
+        
+        if (item.durability === undefined || !maxDurability || item.durability >= maxDurability) return;
+
+        const durabilityPercent = item.durability / maxDurability;
+        const barHeight = 4 * this.guiScale;
+        const barY = y + width - barHeight - (2 * this.guiScale);
+        
+        let barColor = '#00FF00'; // Green
+        if (durabilityPercent < 0.5) barColor = '#FFFF00'; // Yellow
+        if (durabilityPercent < 0.25) barColor = '#FF0000'; // Red
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.fillRect(x + (2 * this.guiScale), barY, width - (4 * this.guiScale), barHeight);
+        
+        ctx.fillStyle = barColor;
+        ctx.fillRect(x + (2 * this.guiScale), barY, (width - (4 * this.guiScale)) * durabilityPercent, barHeight);
+    }
+
   private renderHotbar(ctx: CanvasRenderingContext2D): void {
     const scaledItemSize = HOTBAR_ITEM_SIZE * this.guiScale;
     for (let i = 0; i < HOTBAR_SLOTS; i++) {
@@ -265,10 +292,27 @@ export class HUD {
             ctx.textAlign = 'start';
             ctx.textBaseline = 'alphabetic';
         }
+
+        this.renderDurabilityBar(ctx, item, rect.x, rect.y, rect.w);
       }
       ctx.restore();
     }
   }
+
+    private renderAttackIndicator(ctx: CanvasRenderingContext2D): void {
+        if (this.player.gamemode !== 'survival' || this.player.canAttack()) return;
+
+        const cooldownPercent = this.player.getAttackCooldownPercent();
+        
+        const cx = ctx.canvas.width / 2;
+        const cy = ctx.canvas.height / 2 + 30 * this.guiScale;
+
+        const barWidth = 40 * this.guiScale;
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(cx - barWidth/2, cy + 15 * this.guiScale, barWidth, 4 * this.guiScale);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(cx - barWidth/2, cy + 15 * this.guiScale, barWidth * cooldownPercent, 4 * this.guiScale);
+    }
 
   private renderHealthBar(ctx: CanvasRenderingContext2D): void {
     const scaledSlotSize = HOTBAR_SLOT_SIZE * this.guiScale;
