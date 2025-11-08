@@ -1,4 +1,3 @@
-
 import { Camera } from '../entities/Camera';
 import { ChunkSystem } from '../world/ChunkSystem';
 import { Player } from '../entities/Player';
@@ -12,15 +11,31 @@ import { ItemEntity } from '../entities/ItemEntity';
 import { SettingsManager } from '../core/SettingsManager';
 import { BlockId } from '../types';
 
+function interpolateColor(color1: string, color2: string, factor: number): string {
+    const r1 = parseInt(color1.substring(1, 3), 16);
+    const g1 = parseInt(color1.substring(3, 5), 16);
+    const b1 = parseInt(color1.substring(5, 7), 16);
+
+    const r2 = parseInt(color2.substring(1, 3), 16);
+    const g2 = parseInt(color2.substring(3, 5), 16);
+    const b2 = parseInt(color2.substring(5, 7), 16);
+
+    const r = Math.round(r1 + factor * (r2 - r1));
+    const g = Math.round(g1 + factor * (g2 - g1));
+    const b = Math.round(b1 + factor * (b2 - b1));
+
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
+
 export class RenderEngine {
   private camera: Camera;
   private blockRenderer: BlockRenderer;
   private playerRenderer: PlayerRenderer;
   private clouds: {x: number, y: number, size: number, speed: number}[] = [];
   
-  // V3.0 Lighting System
   private lightMap: Map<string, number> = new Map();
-  private readonly MAX_LIGHT_DISTANCE = 15;
+  private readonly MAX_LIGHT_LEVEL = 15;
 
 
   constructor(camera: Camera) {
@@ -68,11 +83,31 @@ export class RenderEngine {
           }
       });
   }
+  
+  private getSkyColor(worldTime: number): string {
+    const dayColor = '#63a3ff';
+    const nightColor = '#0b0d1c';
+    const sunriseColor = '#ffaf4b';
+    const sunsetColor = '#ff6a3d';
 
-  public render(ctx: CanvasRenderingContext2D, world: ChunkSystem, player: Player, mouseHandler: MouseHandler, animationSystem: AnimationSystem, itemEntities: ItemEntity[]): void {
-    // FIX: Draw the sky background across the entire canvas first.
-    // The renderWorld method will then draw dark underground air blocks on top of this.
-    ctx.fillStyle = '#63a3ff';
+    if (worldTime >= 0 && worldTime < 500) { // Dawn
+        return interpolateColor(nightColor, sunriseColor, worldTime / 500);
+    } else if (worldTime >= 500 && worldTime < 1000) { // Sunrise
+        return interpolateColor(sunriseColor, dayColor, (worldTime - 500) / 500);
+    } else if (worldTime >= 1000 && worldTime < 12000) { // Day
+        return dayColor;
+    } else if (worldTime >= 12000 && worldTime < 13000) { // Sunset
+        return interpolateColor(dayColor, sunsetColor, (worldTime - 12000) / 1000);
+    } else if (worldTime >= 13000 && worldTime < 14000) { // Dusk
+        return interpolateColor(sunsetColor, nightColor, (worldTime - 13000) / 1000);
+    } else { // Night
+        return nightColor;
+    }
+  }
+
+  public render(ctx: CanvasRenderingContext2D, world: ChunkSystem, player: Player, mouseHandler: MouseHandler, animationSystem: AnimationSystem, itemEntities: ItemEntity[], worldTime: number): void {
+    const skyColor = this.getSkyColor(worldTime);
+    ctx.fillStyle = skyColor;
     ctx.fillRect(0, 0, this.camera.width, this.camera.height);
     
     this.renderClouds(ctx);
@@ -81,7 +116,7 @@ export class RenderEngine {
     ctx.scale(this.camera.zoom, this.camera.zoom);
     ctx.translate(-this.camera.position.x, -this.camera.position.y);
 
-    this.renderWorld(ctx, world);
+    this.renderWorld(ctx, world, worldTime);
     
     itemEntities.forEach(entity => entity.render(ctx, this.blockRenderer));
     
@@ -91,7 +126,6 @@ export class RenderEngine {
     
     this.renderParticles(ctx, player);
     
-    // FIX: Access setting from the correct 'gameplay' sub-object.
     if (SettingsManager.instance.settings.gameplay.renderInteractiveArea) {
         this.renderInteractiveArea(ctx, player);
     }
@@ -109,31 +143,52 @@ export class RenderEngine {
     }
   }
   
-  private calculateLightMap(world: ChunkSystem, startX: number, endX: number, startY: number, endY: number): void {
+  private calculateLightMap(world: ChunkSystem, startX: number, endX: number, startY: number, endY: number, worldTime: number): void {
     this.lightMap.clear();
-    const queue: {x: number, y: number, dist: number}[] = [];
+    const queue: {x: number, y: number, light: number}[] = [];
 
-    // 1. Seed the queue with all air blocks at or above the surface. These are the sky light sources.
-    for (let x = startX; x < endX; x++) {
-        const surfaceHeight = world.generator.getSurfaceHeight(x);
-        for (let y = startY; y < endY; y++) {
-            const blockId = world.getBlock(x, y);
+    // 1. Determine sky light level
+    let skyLightLevel = this.MAX_LIGHT_LEVEL;
+    const MIN_NIGHT_LIGHT = 4;
+    if (worldTime > 13000 && worldTime < 23000) { // Full night
+        skyLightLevel = MIN_NIGHT_LIGHT;
+    } else if (worldTime >= 12000 && worldTime <= 13000) { // Sunset
+        const factor = (worldTime - 12000) / 1000;
+        skyLightLevel = Math.round(this.MAX_LIGHT_LEVEL - (this.MAX_LIGHT_LEVEL - MIN_NIGHT_LIGHT) * factor);
+    } else if (worldTime >= 23000 || worldTime < 1000) { // Sunrise
+        const factor = worldTime >= 23000 ? (worldTime - 23000) / 1000 : (worldTime + 1000) / 1000;
+        skyLightLevel = Math.round(MIN_NIGHT_LIGHT + (this.MAX_LIGHT_LEVEL - MIN_NIGHT_LIGHT) * factor);
+    }
+    skyLightLevel = Math.max(0, Math.min(this.MAX_LIGHT_LEVEL, skyLightLevel));
+    
+    // 2. Seed queue with all light sources (block and sky)
+    for (let y = startY; y < endY; y++) {
+        for (let x = startX; x < endX; x++) {
             const key = `${x},${y}`;
-            // A block is lit by the sky if it's air and at or above the natural terrain height.
-            if (blockId === BlockId.AIR && y <= surfaceHeight) {
-                if (!this.lightMap.has(key)) {
-                    this.lightMap.set(key, 0); // Light level 0 is brightest
-                    queue.push({x, y, dist: 0});
+            const blockId = world.getBlock(x, y);
+            const blockType = getBlockType(blockId);
+            
+            // Check for block light sources
+            if (blockType && blockType.lightLevel && blockType.lightLevel > 0) {
+                this.lightMap.set(key, blockType.lightLevel);
+                queue.push({x, y, light: blockType.lightLevel});
+            }
+
+            // Check for sky light sources
+            if (skyLightLevel > 0 && blockId === BlockId.AIR && y <= world.generator.getSurfaceHeight(x)) {
+                if ((this.lightMap.get(key) || 0) < skyLightLevel) {
+                    this.lightMap.set(key, skyLightLevel);
+                    queue.push({x, y, light: skyLightLevel});
                 }
             }
         }
     }
-
-    // 2. Perform BFS to spread the light through non-solid blocks.
+    
+    // 3. Perform BFS to spread the light
     let head = 0;
     while(head < queue.length) {
         const curr = queue[head++];
-        if (curr.dist >= this.MAX_LIGHT_DISTANCE) continue;
+        if (curr.light <= 1) continue;
 
         for (const offset of [{dx:0, dy:1}, {dx:0, dy:-1}, {dx:1, dy:0}, {dx:-1, dy:0}]) {
             const nx = curr.x + offset.dx;
@@ -143,26 +198,31 @@ export class RenderEngine {
             const neighborBlockId = world.getBlock(nx, ny);
             const neighborType = getBlockType(neighborBlockId);
 
-            // Light can only spread through air and other non-solid or light-transparent blocks
-            if ((!neighborType || !neighborType.isSolid || neighborType.isLightTransparent) && !this.lightMap.has(neighborKey)) {
-                this.lightMap.set(neighborKey, curr.dist + 1);
-                queue.push({x: nx, y: ny, dist: curr.dist + 1});
+            if (neighborType && neighborType.isSolid && !neighborType.isLightTransparent) {
+                continue;
+            }
+            
+            const newLight = curr.light - 1;
+
+            if (newLight > (this.lightMap.get(neighborKey) || 0)) {
+                this.lightMap.set(neighborKey, newLight);
+                queue.push({x: nx, y: ny, light: newLight});
             }
         }
     }
   }
 
-  private renderWorld(ctx: CanvasRenderingContext2D, world: ChunkSystem): void {
+  private renderWorld(ctx: CanvasRenderingContext2D, world: ChunkSystem, worldTime: number): void {
     const viewWidth = this.camera.width / this.camera.zoom;
     const viewHeight = this.camera.height / this.camera.zoom;
     
-    const lightBoundsExpand = this.MAX_LIGHT_DISTANCE + 2;
+    const lightBoundsExpand = this.MAX_LIGHT_LEVEL + 2;
     const lightStartX = Math.floor(this.camera.position.x / BLOCK_SIZE) - lightBoundsExpand;
     const lightEndX = lightStartX + Math.ceil(viewWidth / BLOCK_SIZE) + lightBoundsExpand * 2;
     const lightStartY = Math.floor(this.camera.position.y / BLOCK_SIZE) - lightBoundsExpand;
     const lightEndY = lightStartY + Math.ceil(viewHeight / BLOCK_SIZE) + lightBoundsExpand * 2;
     
-    this.calculateLightMap(world, lightStartX, lightEndX, lightStartY, lightEndY);
+    this.calculateLightMap(world, lightStartX, lightEndX, lightStartY, lightEndY, worldTime);
 
     const renderStartX = Math.floor(this.camera.position.x / BLOCK_SIZE) - 1;
     const renderEndX = renderStartX + Math.ceil(viewWidth / BLOCK_SIZE) + 2;
@@ -172,13 +232,12 @@ export class RenderEngine {
     for (let y = renderStartY; y < renderEndY; y++) {
       for (let x = renderStartX; x < renderEndX; x++) {
         const blockId = world.getBlock(x, y);
-        const key = `${x},${y}`;
 
         if (blockId === BlockId.AIR) {
-            // If air is not in the light map, it's underground. Draw the dark background.
-            if (!this.lightMap.has(key)) {
-                ctx.fillStyle = '#211d1c';
-                ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            const lightLevel = this.lightMap.get(`${x},${y}`) || 0;
+            if (lightLevel === 0) {
+                 ctx.fillStyle = '#211d1c';
+                 ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
             }
             continue;
         }
@@ -188,34 +247,26 @@ export class RenderEngine {
 
         this.blockRenderer.render(ctx, blockId, x * BLOCK_SIZE, y * BLOCK_SIZE);
         
-        const lightKey = blockType.isLightTransparent ? key : null;
-        let minNeighborDist = Infinity;
-
-        if (lightKey && this.lightMap.has(lightKey)) {
-             minNeighborDist = this.lightMap.get(lightKey)!;
-        } else if (blockType.isSolid && !blockType.isLightTransparent) {
+        let finalLightLevel = 0;
+        if (blockType.isLightTransparent || !blockType.isSolid) {
+            finalLightLevel = this.lightMap.get(`${x},${y}`) || 0;
+        } else {
+            let maxNeighborLight = 0;
             for (const offset of [{dx:0, dy:1}, {dx:0, dy:-1}, {dx:1, dy:0}, {dx:-1, dy:0}]) {
                 const neighborKey = `${x + offset.dx},${y + offset.dy}`;
-                if (this.lightMap.has(neighborKey)) {
-                    minNeighborDist = Math.min(minNeighborDist, this.lightMap.get(neighborKey)!);
-                }
+                maxNeighborLight = Math.max(maxNeighborLight, this.lightMap.get(neighborKey) || 0);
             }
-        } else {
-             minNeighborDist = 0; // Don't darken transparent blocks themselves
+            finalLightLevel = maxNeighborLight;
         }
 
+        if (blockType.lightLevel) {
+            finalLightLevel = Math.max(finalLightLevel, blockType.lightLevel);
+        }
 
-        if (minNeighborDist === Infinity) {
-            // Block is not adjacent to any lit air, so it's fully dark.
-            ctx.fillStyle = 'rgba(0,0,0,0.95)';
+        const alpha = Math.min(0.95, (this.MAX_LIGHT_LEVEL - finalLightLevel) / this.MAX_LIGHT_LEVEL);
+        if (alpha > 0.01) {
+            ctx.fillStyle = `rgba(0,0,0,${alpha})`;
             ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-        } else {
-            // The light level of the block is based on the distance of the nearest lit air.
-            const alpha = Math.min(0.95, (minNeighborDist / this.MAX_LIGHT_DISTANCE) * 1.0);
-            if (alpha > 0.01) {
-                ctx.fillStyle = `rgba(0,0,0,${alpha})`;
-                ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-            }
         }
       }
     }

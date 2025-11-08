@@ -1,11 +1,10 @@
-
 import { Player } from '../entities/Player';
 import { PlayerPose, BodyPart, ToolInfo, ItemId, ArmorInfo } from '../types';
-// FIX: Replaced CraftingSystem with ItemRegistry for item information.
 import { ItemRegistry } from '../inventory/ItemRegistry';
 import { BLOCK_SIZE } from '../core/Constants';
 import { getBlockType } from '../world/BlockRegistry';
 import { SettingsManager } from '../core/SettingsManager';
+import { ItemRenderer } from './ItemRenderer';
 
 export class PlayerRenderer {
 
@@ -148,7 +147,6 @@ export class PlayerRenderer {
       const heldItem = player.inventory.getItem(player.activeHotbarSlot);
       if (!heldItem || player.animationState === 'sprinting') return;
       
-      // FIX: 'getItemInfo' moved from CraftingSystem to ItemRegistry.
       const itemInfo = ItemRegistry.getItemInfo(heldItem.id);
       if (!itemInfo) return;
       
@@ -169,9 +167,7 @@ export class PlayerRenderer {
       const itemSize = BLOCK_SIZE * 0.7;
       ctx.translate(-itemSize / 2, -itemSize / 2);
       
-      if (itemInfo.toolInfo) {
-        this.drawToolIcon(ctx, itemInfo.toolInfo, itemSize);
-      } else if (itemInfo.blockId) {
+      if (itemInfo.blockId) {
         const blockType = getBlockType(itemInfo.blockId);
         if (blockType) {
           if (blockType.texture) {
@@ -181,88 +177,11 @@ export class PlayerRenderer {
             ctx.fillRect(0, 0, itemSize, itemSize);
           }
         }
+      } else {
+          ItemRenderer.drawItem(ctx, heldItem.id, 0, 0, itemSize);
       }
       
       ctx.restore();
-    }
-
-    private drawToolIcon(ctx: CanvasRenderingContext2D, toolInfo: ToolInfo, size: number): void {
-      const colors = {
-        wood: '#8B4513',
-        stone: '#808080',
-        iron: '#C0C0C0',
-        diamond: '#68DED1',
-        none: '#888'
-      };
-      
-      const materialColor = colors[toolInfo.tier] || '#888';
-      const handleColor = '#8B4513';
-      
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-
-      switch (toolInfo.type) {
-        case 'pickaxe':
-            ctx.strokeStyle = handleColor;
-            ctx.lineWidth = size * 0.1;
-            ctx.beginPath();
-            ctx.moveTo(size * 0.8, size * 0.2);
-            ctx.lineTo(size * 0.2, size * 0.8);
-            ctx.stroke();
-            ctx.strokeStyle = materialColor;
-            ctx.lineWidth = size * 0.15;
-            ctx.beginPath();
-            ctx.moveTo(size * 0.95, size * 0.1);
-            ctx.lineTo(size * 0.8, size * 0.2);
-            ctx.lineTo(size * 0.7, size * 0.35);
-            ctx.stroke();
-            break;
-        case 'axe':
-            ctx.strokeStyle = handleColor;
-            ctx.lineWidth = size * 0.1;
-            ctx.beginPath();
-            ctx.moveTo(size * 0.8, size * 0.2);
-            ctx.lineTo(size * 0.2, size * 0.8);
-            ctx.stroke();
-            ctx.fillStyle = materialColor;
-            ctx.beginPath();
-            ctx.moveTo(size * 0.9, size * 0.1);
-            ctx.quadraticCurveTo(size * 0.6, size * 0.0, size * 0.5, size * 0.4);
-            ctx.quadraticCurveTo(size * 0.4, size * 0.0, size * 0.7, size * 0.3);
-            ctx.closePath();
-            ctx.fill();
-          break;
-        case 'shovel':
-            ctx.strokeStyle = handleColor;
-            ctx.lineWidth = size * 0.1;
-            ctx.beginPath();
-            ctx.moveTo(size * 0.8, size * 0.2);
-            ctx.lineTo(size * 0.2, size * 0.8);
-            ctx.stroke();
-            ctx.fillStyle = materialColor;
-            ctx.beginPath();
-            ctx.moveTo(size*0.9, size*0.1);
-            ctx.quadraticCurveTo(size*0.7, -size*0.1, size*0.6, size*0.3);
-            ctx.lineTo(size*0.8, size*0.4);
-            ctx.closePath();
-            ctx.fill();
-          break;
-        case 'hoe':
-            ctx.strokeStyle = handleColor;
-            ctx.lineWidth = size * 0.1;
-            ctx.beginPath();
-            ctx.moveTo(size * 0.8, size * 0.2);
-            ctx.lineTo(size * 0.2, size * 0.8);
-            ctx.stroke();
-            ctx.strokeStyle = materialColor;
-            ctx.lineWidth = size * 0.15;
-            ctx.beginPath();
-            ctx.moveTo(size * 0.9, size * 0.1);
-            ctx.lineTo(size * 0.7, size * 0.3);
-            ctx.lineTo(size * 0.5, size * 0.3);
-            ctx.stroke();
-            break;
-      }
     }
 
     private renderNametag(ctx: CanvasRenderingContext2D, player: Player) {
@@ -351,9 +270,7 @@ export class PlayerRenderer {
 
         const bootsColor = getArmorColor(armorItems.boots?.id);
         if (bootsColor) {
-            // FIX: Corrected calls to the 'shadeColor' instance method by adding 'this.'.
             const leftBoot: BodyPart = { ...pose.leftLeg, y: pose.leftLeg.y + pose.leftLeg.height * 0.3, height: pose.leftLeg.height * 0.4, color: this.shadeColor(bootsColor, -0.2) };
-            // FIX: Corrected calls to the 'shadeColor' instance method by adding 'this.'.
             const rightBoot: BodyPart = { ...pose.rightLeg, y: pose.rightLeg.y + pose.rightLeg.height * 0.3, height: pose.rightLeg.height * 0.4, color: this.shadeColor(bootsColor, -0.2) };
             this.drawPart(ctx, leftBoot, player, player.facingDirection);
             this.drawPart(ctx, rightBoot, player, player.facingDirection);

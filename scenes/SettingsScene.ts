@@ -1,4 +1,3 @@
-
 import { SettingsManager } from '../core/SettingsManager';
 import { GlobalSettings, GraphicsSettings, AudioSettings, ControlsSettings, GameplaySettings, AccessibilitySettings, Vector2 } from '../types';
 import { Scene, SceneManager } from './SceneManager';
@@ -95,14 +94,16 @@ export class SettingsScene implements Scene {
 
     private createGameplaySettings() {
         const startX = 350, startY = 150, width = 500, height = 40, spacing = 55;
+        let i = 0;
         this.uiComponents.push(
-            { type: 'dropdown', rect: { x: startX, y: startY, w: width, h: height }, label: 'Difficulty', description: 'Game difficulty (affects new worlds).', category: 'Gameplay', key: 'difficulty', options: ['Peaceful', 'Easy', 'Normal', 'Hard'] },
-            { type: 'toggle', rect: { x: startX, y: startY + spacing, w: width, h: height }, label: 'Show FPS', description: 'Display frames per second.', category: 'Gameplay', key: 'showFps' },
-            { type: 'toggle', rect: { x: startX, y: startY + spacing * 2, w: width, h: height }, label: 'Show Coordinates', description: 'Display player X/Y coordinates.', category: 'Gameplay', key: 'showCoordinates' },
-            { type: 'toggle', rect: { x: startX, y: startY + spacing * 3, w: width, h: height }, label: 'Show Reach Radius', description: 'Display a circle for interaction range.', category: 'Gameplay', key: 'renderInteractiveArea' },
-            { type: 'dropdown', rect: { x: startX, y: startY + spacing * 4, w: width, h: height }, label: 'Nametag Distance', description: 'When to show player nametags.', category: 'Gameplay', key: 'nametagDistance', options: ['Always', '16 Blocks', 'Never'] },
-            { type: 'slider', rect: { x: startX, y: startY + spacing * 5, w: width, h: height }, label: 'Nametag Opacity', description: 'Transparency of player nametags.', category: 'Gameplay', key: 'nametagOpacity', min: 0, max: 100, step: 1 },
-            { type: 'toggle', rect: { x: startX, y: startY + spacing * 6, w: width, h: height }, label: 'Nametag Background', description: 'Show a dark background behind nametags.', category: 'Gameplay', key: 'nametagBackground' }
+            { type: 'dropdown', rect: { x: startX, y: startY + spacing * i++, w: width, h: height }, label: 'Difficulty', description: 'Game difficulty (affects new worlds).', category: 'Gameplay', key: 'difficulty', options: ['Peaceful', 'Easy', 'Normal', 'Hard'] },
+            { type: 'dropdown', rect: { x: startX, y: startY + spacing * i++, w: width, h: height }, label: 'Daylight Cycle', description: 'Control the flow of time.', category: 'Gameplay', key: 'daylightCycle', options: ['On', 'Off', 'Locked Day', 'Locked Night'] },
+            { type: 'toggle', rect: { x: startX, y: startY + spacing * i++, w: width, h: height }, label: 'Show FPS', description: 'Display frames per second.', category: 'Gameplay', key: 'showFps' },
+            { type: 'toggle', rect: { x: startX, y: startY + spacing * i++, w: width, h: height }, label: 'Show Coordinates', description: 'Display player X/Y coordinates.', category: 'Gameplay', key: 'showCoordinates' },
+            { type: 'toggle', rect: { x: startX, y: startY + spacing * i++, w: width, h: height }, label: 'Show Reach Radius', description: 'Display a circle for interaction range.', category: 'Gameplay', key: 'renderInteractiveArea' },
+            { type: 'dropdown', rect: { x: startX, y: startY + spacing * i++, w: width, h: height }, label: 'Nametag Distance', description: 'When to show player nametags.', category: 'Gameplay', key: 'nametagDistance', options: ['Always', '16 Blocks', 'Never'] },
+            { type: 'slider', rect: { x: startX, y: startY + spacing * i++, w: width, h: height }, label: 'Nametag Opacity', description: 'Transparency of player nametags.', category: 'Gameplay', key: 'nametagOpacity', min: 0, max: 100, step: 1 },
+            { type: 'toggle', rect: { x: startX, y: startY + spacing * i++, w: width, h: height }, label: 'Nametag Background', description: 'Show a dark background behind nametags.', category: 'Gameplay', key: 'nametagBackground' }
         );
     }
     

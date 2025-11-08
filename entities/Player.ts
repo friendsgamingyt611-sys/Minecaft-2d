@@ -33,7 +33,7 @@ export class Player extends LivingEntity {
   private touchHandler: TouchHandler;
   private inputManager: InputManager;
   public world: ChunkSystem;
-  private physics: PhysicsSystem;
+  public physics!: PhysicsSystem;
   private fallDistance: number = 0;
   public justLanded: boolean = false;
   
@@ -87,7 +87,8 @@ export class Player extends LivingEntity {
   public level: number = 0;
   public xpSystem: XPSystem;
 
-  constructor(profile: PlayerProfile, spawnPoint: Vector2, world: ChunkSystem, mouseHandler: MouseHandler, touchHandler: TouchHandler, inputManager: InputManager, physics: PhysicsSystem, actionCallback: (action: string, data: any) => void) {
+  // FIX: Removed physics system from constructor to break circular dependency. It will be set by GameScene.
+  constructor(profile: PlayerProfile, spawnPoint: Vector2, world: ChunkSystem, mouseHandler: MouseHandler, touchHandler: TouchHandler, inputManager: InputManager, actionCallback: (action: string, data: any) => void) {
     super(spawnPoint, PLAYER_WIDTH, PLAYER_HEIGHT, MAX_HEALTH);
     this.maxHealth = MAX_HEALTH;
 
@@ -102,7 +103,6 @@ export class Player extends LivingEntity {
     this.touchHandler = touchHandler;
     this.inputManager = inputManager;
     this.world = world;
-    this.physics = physics;
     this.inventory = new Inventory(INVENTORY_SLOTS);
     this.armorInventory = new Inventory(ARMOR_SLOTS);
     this.offhandInventory = new Inventory(1);
@@ -186,8 +186,6 @@ export class Player extends LivingEntity {
     // Spectator has very simple update loop
     if (this.gamemode === 'spectator') {
         this.handleInput(inputState);
-        this.position.x += this.velocity.x;
-        this.position.y += this.velocity.y;
         this.updateAnimationState(inputState);
         this.updateBlinking(deltaTime);
         return;
@@ -207,15 +205,8 @@ export class Player extends LivingEntity {
     if (this.placementAnimTimer > 0) this.placementAnimTimer -= deltaTime;
     this.updateTargeting(camera);
     this.handleInput(inputState);
-    if (this.isFlying) {
-        this.position.x += this.velocity.x;
-        this.position.y += this.velocity.y;
-        this.onGround = false;
-    } else {
-        this.physics.applyGravity(this as any);
-        this.physics.applyFriction(this as any);
-        this.physics.updatePositionAndCollision(this as any);
-    }
+    
+    // FIX: Physics logic is now handled by GameScene to break a circular dependency.
     this.handleFallDamage(camera);
     this.handleBlockInteraction(inputState, camera);
     this.updateVitals(deltaTime, camera);
@@ -662,6 +653,13 @@ export class Player extends LivingEntity {
 
     if (inputState.place) {
       const heldItem = this.inventory.getItem(this.activeHotbarSlot);
+
+      if (heldItem && heldItem.id === ItemId.ZOMBIE_SPAWN_EGG) {
+          const placePos = { x: (blockX + 0.5) * BLOCK_SIZE, y: blockY * BLOCK_SIZE };
+          this.actionCallback('spawnEntity', { type: 'zombie', position: placePos });
+          if (this.gamemode === 'survival') this.inventory.removeItem(this.activeHotbarSlot, 1);
+          return;
+      }
 
       // Hoe Logic
       if (heldItem) {

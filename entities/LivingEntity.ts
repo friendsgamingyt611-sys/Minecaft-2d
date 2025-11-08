@@ -26,7 +26,6 @@ export abstract class LivingEntity {
   protected maxAttackCooldown: number = 1.0; // seconds
   
   // Visual
-  // FIX: Make particles public so they can be rendered by the RenderEngine.
   public particles: Particle[] = [];
   protected damageFlashTimer: number = 0;
   
@@ -64,8 +63,6 @@ export abstract class LivingEntity {
     }
     
     // Apply physics
-    // FIX: Cast `this` to `any` to resolve type mismatch with PhysicsEntity union type.
-    // At runtime, `this` will be a concrete subclass (Player or Zombie) which is valid.
     physics.applyGravity(this as any);
     physics.applyFriction(this as any);
     physics.updatePositionAndCollision(this as any);

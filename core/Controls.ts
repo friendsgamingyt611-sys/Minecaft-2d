@@ -33,6 +33,7 @@ export class ControlManager {
             drop: false,
             pickBlock: false,
             swapHands: false,
+            shift: false,
             inventory: false,
             gamemodeSwitch: false,
             pause: false,
@@ -128,6 +129,7 @@ export class ControlManager {
 
         // Sneak Logic
         const isSneakKeyDown = this.inputManager.isKeyDown('shift');
+        this.inputState.shift = isSneakKeyDown;
         this.inputState.sneak.justPressed = this.inputManager.isKeyPressed('shift');
         if (controls.toggleCrouch) {
             if (this.inputState.sneak.justPressed) this.isSneakToggled = !this.isSneakToggled;
@@ -200,6 +202,7 @@ export class ControlManager {
         } else {
             this.isSneakToggled = isSneakBtnDown;
         }
+        this.inputState.shift = isSneakBtnDown;
 
         // Sprint Logic
         this.inputState.sprint.justPressed = this.touchHandler.isButtonPressed('sprint', true);

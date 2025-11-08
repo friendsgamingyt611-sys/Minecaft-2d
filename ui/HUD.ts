@@ -5,10 +5,9 @@ import { getBlockType } from '../world/BlockRegistry';
 import { TouchControlsUI } from './TouchControlsUI';
 import { SettingsManager } from '../core/SettingsManager';
 import { TouchHandler } from '../input/TouchHandler';
-// FIX: The `Item` type is defined in `types.ts`, not `ItemRegistry.ts`.
-// Updated imports to reflect the correct source for the `Item` interface.
 import { ItemRegistry } from '../inventory/ItemRegistry';
 import { Item } from '../types';
+import { ItemRenderer } from '../rendering/ItemRenderer';
 
 export class HUD {
   private player: Player;
@@ -75,7 +74,7 @@ export class HUD {
       }
   }
 
-  public render(ctx: CanvasRenderingContext2D): void {
+  public render(ctx: CanvasRenderingContext2D, worldTime: number): void {
     const now = performance.now();
     while (this.lastFrameTimes.length > 0 && this.lastFrameTimes[0] <= now - 1000) {
       this.lastFrameTimes.shift();
@@ -94,6 +93,10 @@ export class HUD {
     this.renderHotbar(ctx);
     this.renderAttackIndicator(ctx);
     
+    if (SettingsManager.instance.settings.gameplay.daylightCycle !== 'Off') {
+        this.renderClock(ctx, worldTime);
+    }
+
     if (SettingsManager.instance.getEffectiveControlScheme() === 'touch') {
         this.touchControlsUI.render(ctx, this.player);
         this.renderPauseButton(ctx);
@@ -263,18 +266,14 @@ export class HUD {
         const itemY = rect.y + (rect.h - scaledItemSize) / 2;
         
         const itemInfo = ItemRegistry.getItemInfo(item.id);
-        const blockId = itemInfo?.blockId;
-
-        if (blockId) {
-            const blockType = getBlockType(blockId);
-            if (blockType) {
-                if (blockType.texture) {
-                    blockType.texture(ctx, itemX, itemY, scaledItemSize);
-                } else {
-                    ctx.fillStyle = blockType.color;
-                    ctx.fillRect(itemX, itemY, scaledItemSize, scaledItemSize);
-                }
+        
+        if (itemInfo?.blockId) {
+            const blockType = getBlockType(itemInfo.blockId);
+            if (blockType && blockType.texture) {
+                blockType.texture(ctx, itemX, itemY, scaledItemSize);
             }
+        } else {
+            ItemRenderer.drawItem(ctx, item.id, itemX, itemY, scaledItemSize);
         }
 
         if (item.count > 1) {
@@ -428,5 +427,46 @@ export class HUD {
         ctx.fillStyle = '#80FF20'; // Main text
         ctx.fillText(text, this.canvas.width / 2, barY - (10 * this.guiScale));
     }
+  }
+
+  private renderClock(ctx: CanvasRenderingContext2D, worldTime: number): void {
+      const pathRadius = 30 * this.guiScale;
+      const iconRadius = 8 * this.guiScale;
+      const cx = ctx.canvas.width / 2;
+      const cy = 40 * this.guiScale;
+
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+      ctx.lineWidth = 3 * this.guiScale;
+      ctx.beginPath();
+      ctx.arc(cx, cy, pathRadius, Math.PI, 0); // Semicircle path
+      ctx.stroke();
+
+      const timeProgress = (worldTime % 24000) / 24000;
+      const angle = Math.PI + timeProgress * Math.PI;
+
+      const iconX = cx - Math.cos(angle) * pathRadius;
+      const iconY = cy - Math.sin(angle) * pathRadius;
+
+      // True if time is between 0 and 13000 ticks (daytime-ish)
+      const isDay = worldTime > 0 && worldTime < 13000;
+      
+      if (isDay) {
+        // Sun
+        ctx.fillStyle = '#FFD700';
+        ctx.beginPath();
+        ctx.arc(iconX, iconY, iconRadius, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Moon
+        ctx.fillStyle = '#E0E0E0';
+        ctx.beginPath();
+        ctx.arc(iconX, iconY, iconRadius, 0, Math.PI * 2);
+        ctx.fill();
+        // Crescent shadow
+        ctx.fillStyle = '#0b0d1c'; // Night sky color
+        ctx.beginPath();
+        ctx.arc(iconX - iconRadius * 0.5, iconY - iconRadius * 0.5, iconRadius * 0.9, 0, Math.PI * 2);
+        ctx.fill();
+      }
   }
 }

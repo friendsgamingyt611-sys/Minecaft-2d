@@ -15,16 +15,21 @@ export class MobSpawner {
   
   constructor(private world: ChunkSystem) {}
   
-  public update(deltaTime: number, player: Player, mobs: LivingEntity[]): void {
+  public update(deltaTime: number, player: Player, mobs: LivingEntity[], worldTime: number): void {
     this.spawnTimer += deltaTime;
     
     if (this.spawnTimer >= this.SPAWN_INTERVAL) {
       this.spawnTimer = 0;
-      this.attemptSpawn(player, mobs);
+      this.attemptSpawn(player, mobs, worldTime);
     }
   }
   
-  private attemptSpawn(player: Player, mobs: LivingEntity[]): void {
+  private attemptSpawn(player: Player, mobs: LivingEntity[], worldTime: number): void {
+    const isNight = worldTime > 13000 && worldTime < 23000;
+    if (!isNight) {
+        return;
+    }
+
     const nearbyMobs = mobs.filter(mob => {
       const dx = mob.position.x - player.position.x;
       const dy = mob.position.y - player.position.y;

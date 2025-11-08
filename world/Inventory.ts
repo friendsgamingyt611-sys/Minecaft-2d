@@ -111,6 +111,13 @@ export class Inventory {
     }
 
     public fromData(data: InventoryData) {
-        this.items = data.items;
+        // FIX: Deep copy items to prevent reference issues, which caused item loss when switching game modes.
+        this.items = data.items.map(item => item ? { ...item } : null);
+        
+        // Ensure the array is the correct size, padding with null if needed.
+        if (this.items.length < this.size) {
+            this.items.length = this.size;
+            this.items.fill(null, data.items.length);
+        }
     }
 }

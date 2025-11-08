@@ -127,7 +127,8 @@ export class WorldLoadingScene implements Scene {
                 created: now,
                 lastPlayed: now,
                 timePlayed: 0,
-                spawnPoint: spawnPoint
+                spawnPoint: spawnPoint,
+                worldTime: 6000 // Start at noon
             },
             player: null as any,
             chunks: [],
@@ -140,7 +141,8 @@ export class WorldLoadingScene implements Scene {
         }
 
         // FIX: Added the missing 'profile' argument to the Player constructor.
-        const tempPlayer = new Player(activeProfile, spawnPoint, this.tempWorld, this.sceneManager.mouseHandler, this.sceneManager.touchHandler, this.sceneManager.inputManager, null as any, () => {});
+        // FIX: Removed physicsSystem argument to match new constructor signature.
+        const tempPlayer = new Player(activeProfile, spawnPoint, this.tempWorld, this.sceneManager.mouseHandler, this.sceneManager.touchHandler, this.sceneManager.inputManager, () => {});
         tempPlayer.gamemode = this.options.gameMode;
         newWorld.player = tempPlayer.toData();
         

@@ -1,4 +1,3 @@
-
 import { GlobalSettings, ControlScheme } from "../types";
 
 export class SettingsManager {
@@ -64,6 +63,7 @@ export class SettingsManager {
                 nametagDistance: 'Always',
                 nametagOpacity: 100,
                 nametagBackground: true,
+                daylightCycle: 'On',
             },
             accessibility: {
                 highContrast: false,

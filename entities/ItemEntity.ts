@@ -1,10 +1,9 @@
-
 import { Vector2, Item, ItemId } from '../types';
 import { PhysicsSystem } from './PhysicsSystem';
 import { BLOCK_SIZE } from '../core/Constants';
 import { BlockRenderer } from '../rendering/BlockRenderer';
-// FIX: Replaced CraftingSystem with ItemRegistry for item information.
 import { ItemRegistry } from '../inventory/ItemRegistry';
+import { ItemRenderer } from '../rendering/ItemRenderer';
 
 export class ItemEntity {
     public position: Vector2;
@@ -64,32 +63,31 @@ export class ItemEntity {
         return this.collected || this.lifetime <= 0;
     }
 
-    public render(ctx: CanvasRenderingContext2D, blockRenderer: BlockRenderer): void {
-        // FIX: 'getItemInfo' moved from CraftingSystem to ItemRegistry.
+    public render(ctx: CanvasRenderingContext2D, _blockRenderer: BlockRenderer): void {
         const itemInfo = ItemRegistry.getItemInfo(this.item.id);
-        if (!itemInfo || !itemInfo.blockId) return;
+        if (!itemInfo) return;
         
-        // Calculate bob offset
         const bob = Math.sin(this.bobTimer) * 4;
         const x = this.position.x;
         const y = this.position.y + bob;
         
         ctx.save();
         
-        // Glow effect for rare items (diamonds, etc.)
-        if (this.item.id === ItemId.DIAMOND) {
-          ctx.shadowColor = '#68ded1';
+        if (this.item.id === ItemId.DIAMOND || this.item.id === ItemId.EMERALD) {
+          ctx.shadowColor = this.item.id === ItemId.DIAMOND ? '#68ded1' : '#04d94f';
           ctx.shadowBlur = 20 * this.glowPulse;
         }
         
-        // Center and rotate
         ctx.translate(x + this.width / 2, y + this.height / 2);
         ctx.rotate(this.rotationAngle);
-        ctx.scale(0.5, 0.5); // Smaller than block size
-        ctx.translate(-BLOCK_SIZE / 2, -BLOCK_SIZE / 2);
+        const itemRenderSize = BLOCK_SIZE * (itemInfo.blockId ? 0.5 : 0.7);
+        ctx.translate(-itemRenderSize / 2, -itemRenderSize / 2);
         
-        // Render the block/item
-        blockRenderer.render(ctx, itemInfo.blockId, 0, 0);
+        if (itemInfo.blockId) {
+            _blockRenderer.render(ctx, itemInfo.blockId, 0, 0);
+        } else {
+            ItemRenderer.drawItem(ctx, this.item.id, 0, 0, itemRenderSize);
+        }
         
         ctx.restore();
     }

@@ -13,6 +13,9 @@ export class MouseHandler {
   public isLeftUp: boolean = false;
   public scrollDelta: number = 0;
   
+  public isRightDoubleClicked: boolean = false;
+  private lastRightClickTime: number = 0;
+  
   private canvas: HTMLCanvasElement;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -41,6 +44,7 @@ export class MouseHandler {
       this.isRightClicked = false;
       this.isMiddleClicked = false;
       this.isLeftUp = false;
+      this.isRightDoubleClicked = false;
       this.scrollDelta = 0;
   }
 
@@ -62,6 +66,12 @@ export class MouseHandler {
     } else if (event.button === 2) {
       this.isRightDown = true;
       this.isRightClicked = true;
+      
+      const now = Date.now();
+      if (now - this.lastRightClickTime < 300) { // 300ms for double click
+          this.isRightDoubleClicked = true;
+      }
+      this.lastRightClickTime = now;
     }
   };
 

@@ -119,6 +119,7 @@ export enum ItemId {
   LEATHER_BOOTS = 299,
   LAPIS_LAZULI = 300,
   ROTTEN_FLESH = 301,
+  ZOMBIE_SPAWN_EGG = 302,
 }
 
 export type ToolType = 'pickaxe' | 'axe' | 'shovel' | 'sword' | 'hoe' | 'none';
@@ -160,7 +161,7 @@ export interface BlockType {
   name: string;
   color: string;
   isSolid: boolean;
-  hardness: number; // Time to break in frames with hand (60fps)
+  hardness: number; // Time to break in frames with 60fps)
   isIndestructible?: boolean;
   texture?: (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, data?: any) => void;
   isLightTransparent?: boolean;
@@ -254,6 +255,7 @@ export interface InputState {
     drop: boolean; // 'q' or drop button (is pressed)
     pickBlock: boolean; // middle-click
     swapHands: boolean; // 'f' key
+    shift: boolean; // is shift key down
     
     // FIX: Centralized system-level actions
     inventory: boolean; // 'e' key
@@ -282,6 +284,7 @@ export interface WorldMetadata {
     created: number;
     lastPlayed: number;
     spawnPoint: Vector2;
+    worldTime?: number;
 }
 
 export interface InventoryData {
@@ -382,6 +385,7 @@ export interface GameplaySettings {
   nametagDistance: 'Always' | '16 Blocks' | 'Never';
   nametagOpacity: number; // 0-100
   nametagBackground: boolean;
+  daylightCycle: 'On' | 'Off' | 'Locked Day' | 'Locked Night';
 }
 
 export interface AccessibilitySettings {

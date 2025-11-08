@@ -8,23 +8,25 @@ const ITEM_INFO_MAP: Map<ItemId, ItemInfo> = new Map([
     [ItemId.GRASS, { name: 'Grass Block', maxStackSize: 64, blockId: BlockId.GRASS, category: 'Building Blocks' }],
     [ItemId.DIRT, { name: 'Dirt', maxStackSize: 64, blockId: BlockId.DIRT, category: 'Building Blocks' }],
     [ItemId.STONE, { name: 'Stone', maxStackSize: 64, blockId: BlockId.STONE, category: 'Building Blocks' }],
-    [ItemId.COBBLESTONE, { name: 'Cobblestone', maxStackSize: 64, blockId: BlockId.COBBLESTONE, category: 'Building Blocks' }],
+    [ItemId.BEDROCK, { name: 'Bedrock', maxStackSize: 64, blockId: BlockId.BEDROCK, category: 'Building Blocks' }],
     [ItemId.OAK_LOG, { name: 'Oak Log', maxStackSize: 64, blockId: BlockId.OAK_LOG, category: 'Building Blocks' }],
-    [ItemId.OAK_PLANKS, { name: 'Oak Planks', maxStackSize: 64, blockId: BlockId.OAK_PLANKS, category: 'Building Blocks' }],
     [ItemId.OAK_LEAVES, { name: 'Oak Leaves', maxStackSize: 64, blockId: BlockId.OAK_LEAVES, category: 'Building Blocks' }],
+    [ItemId.COBBLESTONE, { name: 'Cobblestone', maxStackSize: 64, blockId: BlockId.COBBLESTONE, category: 'Building Blocks' }],
+    [ItemId.OAK_PLANKS, { name: 'Oak Planks', maxStackSize: 64, blockId: BlockId.OAK_PLANKS, category: 'Building Blocks' }],
     [ItemId.SPRUCE_LOG, { name: 'Spruce Log', maxStackSize: 64, blockId: BlockId.SPRUCE_LOG, category: 'Building Blocks' }],
-    [ItemId.SPRUCE_PLANKS, { name: 'Spruce Planks', maxStackSize: 64, blockId: BlockId.SPRUCE_PLANKS, category: 'Building Blocks' }],
     [ItemId.SPRUCE_LEAVES, { name: 'Spruce Leaves', maxStackSize: 64, blockId: BlockId.SPRUCE_LEAVES, category: 'Building Blocks' }],
+    [ItemId.SPRUCE_PLANKS, { name: 'Spruce Planks', maxStackSize: 64, blockId: BlockId.SPRUCE_PLANKS, category: 'Building Blocks' }],
     [ItemId.BIRCH_LOG, { name: 'Birch Log', maxStackSize: 64, blockId: BlockId.BIRCH_LOG, category: 'Building Blocks' }],
-    [ItemId.BIRCH_PLANKS, { name: 'Birch Planks', maxStackSize: 64, blockId: BlockId.BIRCH_PLANKS, category: 'Building Blocks' }],
     [ItemId.BIRCH_LEAVES, { name: 'Birch Leaves', maxStackSize: 64, blockId: BlockId.BIRCH_LEAVES, category: 'Building Blocks' }],
+    [ItemId.BIRCH_PLANKS, { name: 'Birch Planks', maxStackSize: 64, blockId: BlockId.BIRCH_PLANKS, category: 'Building Blocks' }],
     [ItemId.SAND, { name: 'Sand', maxStackSize: 64, blockId: BlockId.SAND, category: 'Building Blocks' }],
     [ItemId.GRAVEL, { name: 'Gravel', maxStackSize: 64, blockId: BlockId.GRAVEL, category: 'Building Blocks' }],
     [ItemId.STONE_BRICKS, { name: 'Stone Bricks', maxStackSize: 64, blockId: BlockId.STONE_BRICKS, category: 'Building Blocks' }],
     [ItemId.GLASS, { name: 'Glass', maxStackSize: 64, blockId: BlockId.GLASS, category: 'Building Blocks' }],
-    [ItemId.OBSIDIAN, { name: 'Obsidian', maxStackSize: 64, blockId: BlockId.OBSIDIAN, category: 'Building Blocks' }],
     [ItemId.SMOOTH_STONE, { name: 'Smooth Stone', maxStackSize: 64, blockId: BlockId.SMOOTH_STONE, category: 'Building Blocks' }],
-    
+    [ItemId.OBSIDIAN, { name: 'Obsidian', maxStackSize: 64, blockId: BlockId.OBSIDIAN, category: 'Building Blocks' }],
+    [ItemId.FARMLAND, { name: 'Farmland', maxStackSize: 64, blockId: BlockId.FARMLAND, category: 'Building Blocks' }],
+
     // Decorations
     [ItemId.CRAFTING_TABLE, { name: 'Crafting Table', maxStackSize: 64, blockId: BlockId.CRAFTING_TABLE, category: 'Decorations' }],
     [ItemId.CHEST, { name: 'Chest', maxStackSize: 64, blockId: BlockId.CHEST, category: 'Decorations' }],
@@ -39,7 +41,6 @@ const ITEM_INFO_MAP: Map<ItemId, ItemInfo> = new Map([
     [ItemId.IRON_ORE, { name: 'Iron Ore', maxStackSize: 64, blockId: BlockId.IRON_ORE, category: 'Materials' }],
     [ItemId.GOLD_ORE, { name: 'Gold Ore', maxStackSize: 64, blockId: BlockId.GOLD_ORE, category: 'Materials' }],
     [ItemId.DIAMOND_ORE, { name: 'Diamond Ore', maxStackSize: 64, blockId: BlockId.DIAMOND_ORE, category: 'Materials' }],
-    [ItemId.REDSTONE_ORE, { name: 'Redstone Ore', maxStackSize: 64, blockId: BlockId.REDSTONE_ORE, category: 'Redstone' }],
     [ItemId.EMERALD_ORE, { name: 'Emerald Ore', maxStackSize: 64, blockId: BlockId.EMERALD_ORE, category: 'Materials' }],
     [ItemId.LAPIS_LAZULI_ORE, { name: 'Lapis Lazuli Ore', maxStackSize: 64, blockId: BlockId.LAPIS_LAZULI_ORE, category: 'Materials' }],
     [ItemId.STICK, { name: 'Stick', maxStackSize: 64, category: 'Materials' }],
@@ -50,10 +51,15 @@ const ITEM_INFO_MAP: Map<ItemId, ItemInfo> = new Map([
     [ItemId.IRON_INGOT, { name: 'Iron Ingot', maxStackSize: 64, category: 'Materials' }],
     [ItemId.RAW_GOLD, { name: 'Raw Gold', maxStackSize: 64, category: 'Materials' }],
     [ItemId.GOLD_INGOT, { name: 'Gold Ingot', maxStackSize: 64, category: 'Materials' }],
-    [ItemId.REDSTONE_DUST, { name: 'Redstone Dust', maxStackSize: 64, category: 'Redstone' }],
     [ItemId.LAPIS_LAZULI, { name: 'Lapis Lazuli', maxStackSize: 64, category: 'Materials' }],
     [ItemId.FLINT, { name: 'Flint', maxStackSize: 64, category: 'Materials' }],
     [ItemId.LEATHER, { name: 'Leather', maxStackSize: 64, category: 'Materials' }],
+
+    // Redstone
+    [ItemId.REDSTONE_ORE, { name: 'Redstone Ore', maxStackSize: 64, blockId: BlockId.REDSTONE_ORE, category: 'Redstone' }],
+    [ItemId.REDSTONE_DUST, { name: 'Redstone Dust', maxStackSize: 64, category: 'Redstone' }],
+
+    // Foodstuffs
     [ItemId.ROTTEN_FLESH, { name: 'Rotten Flesh', maxStackSize: 64, category: 'Foodstuffs' }],
     
     // Tools & Combat
@@ -98,6 +104,9 @@ const ITEM_INFO_MAP: Map<ItemId, ItemInfo> = new Map([
     [ItemId.DIAMOND_BOOTS, { name: 'Diamond Boots', maxStackSize: 1, armorInfo: { type: 'boots', protection: 3, durability: 429 }, category: 'Tools & Combat' }],
 
     [ItemId.SHIELD, { name: 'Shield', maxStackSize: 1, category: 'Tools & Combat' }],
+    
+    // Miscellaneous
+    [ItemId.ZOMBIE_SPAWN_EGG, { name: 'Zombie Spawn Egg', maxStackSize: 64, category: 'Miscellaneous' }],
 ]);
 
 export class ItemRegistry {
@@ -105,9 +114,14 @@ export class ItemRegistry {
     private static itemsByCategory: Map<string, ItemId[]> = new Map();
 
     public static initialize() {
+        // Ensure the map is clear before initializing
+        this.itemsByCategory.clear();
         ITEM_CATEGORIES.forEach(cat => this.itemsByCategory.set(cat, []));
+        
         for (const [id, info] of ITEM_INFO_MAP.entries()) {
-            this.itemsByCategory.get(info.category)?.push(id);
+            if (this.itemsByCategory.has(info.category)) {
+                this.itemsByCategory.get(info.category)!.push(id);
+            }
         }
     }
 

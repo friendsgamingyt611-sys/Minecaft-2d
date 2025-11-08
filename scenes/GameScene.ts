@@ -64,6 +64,10 @@ export class GameScene implements Scene {
   private readonly GAMEMODE_SWITCH_DURATION = 0.5; // seconds
   private nextGamemode: GameMode = 'survival';
 
+  // Day/Night Cycle
+  public worldTime: number = 6000;
+  private readonly TIME_SPEED = 20; // 24000 ticks in 20 mins = 20 ticks/sec
+
 
   constructor(sceneManager: SceneManager, worldData: WorldData) {
     this.sceneManager = sceneManager;
@@ -85,9 +89,12 @@ export class GameScene implements Scene {
         throw new Error("No active profile found when starting game scene.");
     }
 
-    this.player = new Player(activeProfile, this.worldData.metadata.spawnPoint, this.world, this.sceneManager.mouseHandler, this.sceneManager.touchHandler, this.sceneManager.inputManager, this.physicsSystem, this.onPlayerAction);
+    // FIX: Removed physicsSystem from constructor to break circular dependency with Player.
+    this.player = new Player(activeProfile, this.worldData.metadata.spawnPoint, this.world, this.sceneManager.mouseHandler, this.sceneManager.touchHandler, this.sceneManager.inputManager, this.onPlayerAction);
+    this.player.physics = this.physicsSystem;
     this.player.fromData(this.worldData.player);
     this.player.setGameMode(this.worldData.metadata.gameMode);
+    this.worldTime = this.worldData.metadata.worldTime || 6000;
 
     const canvas = this.sceneManager.mouseHandler['canvas'] as HTMLCanvasElement;
     this.camera = new Camera(canvas.width, canvas.height, this.player);
@@ -95,7 +102,7 @@ export class GameScene implements Scene {
     this.hud = new HUD(this.player, this.touchControlsUI, this.sceneManager.touchHandler, this.togglePause);
     this.animationSystem = new AnimationSystem();
     this.craftingSystem = new CraftingSystem();
-    this.inventoryUI = new InventoryUI(this.player, this.craftingSystem, this.sceneManager.mouseHandler, this.sceneManager.touchHandler, this.world, this.onPlayerAction);
+    this.inventoryUI = new InventoryUI(this.player, this.craftingSystem, this.sceneManager.mouseHandler, this.sceneManager.touchHandler, this.world, this.onPlayerAction, this.sceneManager.inputManager, this.animationSystem);
     this.chatUI = new ChatUI();
 
     this.setupMenus(canvas);
@@ -147,6 +154,8 @@ export class GameScene implements Scene {
   }
   exit(): void {
       window.removeEventListener('beforeunload', this.saveOnExit);
+      // FIX: Correctly call dispose method on inventoryUI.
+      this.inventoryUI.dispose();
       
       // Unregister hotbar slots
       for (let i = 0; i < HOTBAR_SLOTS; i++) {
@@ -169,6 +178,7 @@ export class GameScene implements Scene {
     this.worldData.chunks = this.world.toData();
     this.worldData.metadata.lastPlayed = Date.now();
     this.worldData.metadata.gameMode = this.player.gamemode;
+    this.worldData.metadata.worldTime = this.worldTime;
     WorldStorage.saveWorld(this.worldData);
     this.hud.displaySaveIndicator();
     console.log(`World "${this.worldData.metadata.name}" saved.`);
@@ -220,10 +230,33 @@ export class GameScene implements Scene {
       case 'showNotification':
           this.hud.showNotification(data.message);
           break;
+      case 'spawnEntity':
+        if (data.type === 'zombie') {
+            this.mobs.push(new Zombie(data.position));
+        }
+        break;
     }
   };
   
   update(deltaTime: number): void {
+    const daylightCycle = SettingsManager.instance.settings.gameplay.daylightCycle;
+    if (!this.isPaused && !this.isSwitchingGamemode && !this.player.isDead) {
+        switch(daylightCycle) {
+            case 'On':
+                this.worldTime = (this.worldTime + deltaTime * this.TIME_SPEED) % 24000;
+                break;
+            case 'Locked Day':
+                this.worldTime = 6000;
+                break;
+            case 'Locked Night':
+                this.worldTime = 18000;
+                break;
+            case 'Off':
+                // Do nothing
+                break;
+        }
+    }
+
     if (this.isSwitchingGamemode) {
         this.gamemodeSwitchTimer += deltaTime;
         const halfDuration = this.GAMEMODE_SWITCH_DURATION / 2;
@@ -294,6 +327,18 @@ export class GameScene implements Scene {
     
     // FIX: Changed player.update to player.updatePlayer to resolve signature conflict with LivingEntity.
     this.player.updatePlayer(deltaTime, this.camera, inputState);
+
+    // FIX: Moved physics logic out of Player to GameScene to break circular dependency.
+    if (this.player.isFlying || this.player.gamemode === 'spectator') {
+        this.player.position.x += this.player.velocity.x;
+        this.player.position.y += this.player.velocity.y;
+        this.player.onGround = false;
+    } else {
+        this.physicsSystem.applyGravity(this.player);
+        this.physicsSystem.applyFriction(this.player);
+        this.physicsSystem.updatePositionAndCollision(this.player);
+    }
+    
     this.world.update(this.player.position);
     this.world.updateBlockEntities(deltaTime);
     this.camera.update(deltaTime);
@@ -340,7 +385,7 @@ export class GameScene implements Scene {
         return true;
       });
 
-      this.mobSpawner.update(deltaTime, this.player, this.mobs as Zombie[]);
+      this.mobSpawner.update(deltaTime, this.player, this.mobs as Zombie[], this.worldTime);
     }
 
 
@@ -388,7 +433,7 @@ export class GameScene implements Scene {
         ctx.filter = `grayscale(${grayscale})`;
     }
 
-    this.renderer.render(ctx, this.world, this.player, this.sceneManager.mouseHandler, this.animationSystem, this.itemEntities);
+    this.renderer.render(ctx, this.world, this.player, this.sceneManager.mouseHandler, this.animationSystem, this.itemEntities, this.worldTime);
     
     this.mobs.forEach(mob => mob.render(ctx));
 
@@ -396,7 +441,7 @@ export class GameScene implements Scene {
       this.renderPauseMenu(ctx);
     } else {
        if (!isActuallyDead) {
-          this.hud.render(ctx);
+          this.hud.render(ctx, this.worldTime);
       }
     }
     
