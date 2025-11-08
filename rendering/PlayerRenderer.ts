@@ -1,7 +1,8 @@
 
 import { Player } from '../entities/Player';
-import { PlayerPose, BodyPart, ToolInfo, ItemId } from '../types';
-import { CraftingSystem } from '../crafting/CraftingSystem';
+import { PlayerPose, BodyPart, ToolInfo, ItemId, ArmorInfo } from '../types';
+// FIX: Replaced CraftingSystem with ItemRegistry for item information.
+import { ItemRegistry } from '../inventory/ItemRegistry';
 import { BLOCK_SIZE } from '../core/Constants';
 import { getBlockType } from '../world/BlockRegistry';
 import { SettingsManager } from '../core/SettingsManager';
@@ -147,7 +148,8 @@ export class PlayerRenderer {
       const heldItem = player.inventory.getItem(player.activeHotbarSlot);
       if (!heldItem || player.animationState === 'sprinting') return;
       
-      const itemInfo = CraftingSystem.getItemInfo(heldItem.id);
+      // FIX: 'getItemInfo' moved from CraftingSystem to ItemRegistry.
+      const itemInfo = ItemRegistry.getItemInfo(heldItem.id);
       if (!itemInfo) return;
       
       const holdingArm = pose.rightArm.z > pose.leftArm.z ? pose.rightArm : pose.leftArm;
@@ -245,6 +247,21 @@ export class PlayerRenderer {
             ctx.closePath();
             ctx.fill();
           break;
+        case 'hoe':
+            ctx.strokeStyle = handleColor;
+            ctx.lineWidth = size * 0.1;
+            ctx.beginPath();
+            ctx.moveTo(size * 0.8, size * 0.2);
+            ctx.lineTo(size * 0.2, size * 0.8);
+            ctx.stroke();
+            ctx.strokeStyle = materialColor;
+            ctx.lineWidth = size * 0.15;
+            ctx.beginPath();
+            ctx.moveTo(size * 0.9, size * 0.1);
+            ctx.lineTo(size * 0.7, size * 0.3);
+            ctx.lineTo(size * 0.5, size * 0.3);
+            ctx.stroke();
+            break;
       }
     }
 
@@ -298,6 +315,51 @@ export class PlayerRenderer {
         }
     }
 
+    private renderArmor(ctx: CanvasRenderingContext2D, player: Player, pose: PlayerPose) {
+        const armorItems = {
+            helmet: player.armorInventory.getItem(0),
+            chestplate: player.armorInventory.getItem(1),
+            leggings: player.armorInventory.getItem(2),
+            boots: player.armorInventory.getItem(3),
+        };
+
+        const getArmorColor = (item: ItemId | undefined): string | null => {
+            if (!item) return null;
+            if (item >= ItemId.LEATHER_HELMET && item <= ItemId.LEATHER_BOOTS) return '#7a4a35';
+            if (item >= ItemId.IRON_HELMET && item <= ItemId.IRON_BOOTS) return '#c0c0c0';
+            if (item >= ItemId.DIAMOND_HELMET && item <= ItemId.DIAMOND_BOOTS) return '#68ded1';
+            return null;
+        }
+    
+        const helmetColor = getArmorColor(armorItems.helmet?.id);
+        if (helmetColor) {
+            this.drawPart(ctx, { ...pose.head, color: helmetColor }, player, player.facingDirection);
+        }
+
+        const chestplateColor = getArmorColor(armorItems.chestplate?.id);
+        if (chestplateColor) {
+            this.drawPart(ctx, { ...pose.torso, color: chestplateColor }, player, player.facingDirection);
+            this.drawPart(ctx, { ...pose.leftArm, color: chestplateColor, height: pose.leftArm.height * 0.7 }, player, player.facingDirection);
+            this.drawPart(ctx, { ...pose.rightArm, color: chestplateColor, height: pose.rightArm.height * 0.7 }, player, player.facingDirection);
+        }
+
+        const leggingsColor = getArmorColor(armorItems.leggings?.id);
+        if (leggingsColor) {
+            this.drawPart(ctx, { ...pose.leftLeg, color: leggingsColor }, player, player.facingDirection);
+            this.drawPart(ctx, { ...pose.rightLeg, color: leggingsColor }, player, player.facingDirection);
+        }
+
+        const bootsColor = getArmorColor(armorItems.boots?.id);
+        if (bootsColor) {
+            // FIX: Corrected calls to the 'shadeColor' instance method by adding 'this.'.
+            const leftBoot: BodyPart = { ...pose.leftLeg, y: pose.leftLeg.y + pose.leftLeg.height * 0.3, height: pose.leftLeg.height * 0.4, color: this.shadeColor(bootsColor, -0.2) };
+            // FIX: Corrected calls to the 'shadeColor' instance method by adding 'this.'.
+            const rightBoot: BodyPart = { ...pose.rightLeg, y: pose.rightLeg.y + pose.rightLeg.height * 0.3, height: pose.rightLeg.height * 0.4, color: this.shadeColor(bootsColor, -0.2) };
+            this.drawPart(ctx, leftBoot, player, player.facingDirection);
+            this.drawPart(ctx, rightBoot, player, player.facingDirection);
+        }
+    }
+
     private renderBody(ctx: CanvasRenderingContext2D, player: Player, pose: PlayerPose): void {
         if (player.gamemode === 'spectator') {
             ctx.globalAlpha = 0.4;
@@ -313,13 +375,19 @@ export class PlayerRenderer {
 
         parts.sort((a, b) => a.z - b.z);
 
+        // Render base body parts
         for (const part of parts) {
             this.drawPart(ctx, part, player, player.facingDirection);
         }
         
-        this.renderHeldItem(ctx, player, pose);
-        
+        // Render face details under armor
         this.drawFace(ctx, player, pose);
+        
+        // Render armor on top of the body
+        this.renderArmor(ctx, player, pose);
+        
+        // Render held item on top of everything
+        this.renderHeldItem(ctx, player, pose);
 
         ctx.restore();
 

@@ -1,7 +1,7 @@
 
 
 import { Item, ItemId, InventoryData } from '../types';
-import { CraftingSystem } from '../crafting/CraftingSystem';
+import { ItemRegistry } from '../inventory/ItemRegistry';
 
 export class Inventory {
     private items: (Item | null)[];
@@ -35,10 +35,9 @@ export class Inventory {
     }
 
     public addItem(item: Item): Item | null {
-        const itemInfo = CraftingSystem.getItemInfo(item.id);
+        const itemInfo = ItemRegistry.getItemInfo(item.id);
         const maxStackSize = itemInfo ? itemInfo.maxStackSize : 64;
 
-        // First pass: try to stack with existing items
         for (let i = 0; i < this.size; i++) {
             const existingItem = this.items[i];
             if (existingItem && existingItem.id === item.id && existingItem.count < maxStackSize) {
@@ -46,20 +45,39 @@ export class Inventory {
                 const toAdd = Math.min(canAdd, item.count);
                 existingItem.count += toAdd;
                 item.count -= toAdd;
-                if (item.count <= 0) return null; // All items added
+                if (item.count <= 0) return null;
             }
         }
 
-        // Second pass: find an empty slot
         for (let i = 0; i < this.size; i++) {
             if (!this.items[i]) {
                 this.items[i] = { ...item };
-                return null; // All items added
+                return null;
             }
         }
 
-        return item; // Return remaining items
+        return item;
     }
+    
+    public addItemToSlot(item: Item, slot: number): Item | null {
+        if (slot < 0 || slot >= this.size) return item;
+        const itemInfo = ItemRegistry.getItemInfo(item.id);
+        if (!itemInfo) return item;
+        
+        const existingItem = this.items[slot];
+        if (existingItem && existingItem.id === item.id) {
+            const canAdd = itemInfo.maxStackSize - existingItem.count;
+            const toAdd = Math.min(canAdd, item.count);
+            existingItem.count += toAdd;
+            item.count -= toAdd;
+        } else if (!existingItem) {
+            this.items[slot] = item;
+            return null;
+        }
+        
+        return item.count > 0 ? item : null;
+    }
+
 
     public removeItem(slot: number, count: number): boolean {
         const item = this.getItem(slot);
@@ -70,6 +88,20 @@ export class Inventory {
             this.items[slot] = null;
         }
         return true;
+    }
+
+    public hasItem(itemId: ItemId): boolean {
+        return this.items.some(item => item?.id === itemId);
+    }
+    
+    public getAllItemIds(): Set<ItemId> {
+        const idSet = new Set<ItemId>();
+        for (const item of this.items) {
+            if (item) {
+                idSet.add(item.id);
+            }
+        }
+        return idSet;
     }
     
     public toData(): InventoryData {

@@ -1,8 +1,10 @@
+
 import { Vector2, Item, ItemId } from '../types';
 import { PhysicsSystem } from './PhysicsSystem';
 import { BLOCK_SIZE } from '../core/Constants';
 import { BlockRenderer } from '../rendering/BlockRenderer';
-import { CraftingSystem } from '../crafting/CraftingSystem';
+// FIX: Replaced CraftingSystem with ItemRegistry for item information.
+import { ItemRegistry } from '../inventory/ItemRegistry';
 
 export class ItemEntity {
     public position: Vector2;
@@ -63,7 +65,8 @@ export class ItemEntity {
     }
 
     public render(ctx: CanvasRenderingContext2D, blockRenderer: BlockRenderer): void {
-        const itemInfo = CraftingSystem.getItemInfo(this.item.id);
+        // FIX: 'getItemInfo' moved from CraftingSystem to ItemRegistry.
+        const itemInfo = ItemRegistry.getItemInfo(this.item.id);
         if (!itemInfo || !itemInfo.blockId) return;
         
         // Calculate bob offset

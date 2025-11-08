@@ -1,5 +1,4 @@
 
-
 import { SceneManager } from '../scenes/SceneManager';
 import { TitleScene } from '../scenes/TitleScene';
 import { InputManager } from '../input/InputManager';
@@ -75,6 +74,10 @@ export class GameEngine {
     // Centralize late updates for input handlers
     this.mouseHandler.lateUpdate();
     this.touchHandler.lateUpdate();
+    // FIX: Added the missing lateUpdate call for the InputManager.
+    // This is the core fix ensuring that `isKeyReleased` and `isKeyPressed`
+    // work correctly, as it updates the previous frame's key state.
+    this.inputManager.lateUpdate();
 
     this.animationFrameId = requestAnimationFrame(this.gameLoop);
   };

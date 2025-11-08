@@ -1,26 +1,26 @@
-
-import { Vector2, BlockId, Particle, Item, ItemId, GameMode, InputState, BlockType, PlayerData, WorldData, PlayerProfile } from '../types';
+import { Vector2, BlockId, Particle, Item, ItemId, GameMode, InputState, BlockType, PlayerData, PlayerProfile } from '../types';
 import { ChunkSystem } from '../world/ChunkSystem';
 import { 
     PLAYER_MOVE_SPEED, GRAVITY, PLAYER_JUMP_FORCE, PLAYER_FRICTION,
     PLAYER_WIDTH, PLAYER_HEIGHT, BLOCK_SIZE, HOTBAR_SLOTS, REACH_DISTANCE,
     PARTICLE_COUNT, PARTICLE_LIFESPAN, MAX_HEALTH, MAX_HUNGER, FALL_DAMAGE_START_BLOCKS,
     PLAYER_SPRINT_SPEED, PLAYER_SNEAK_SPEED, PLAYER_SNEAK_HEIGHT,
-    TOOL_EFFECTIVENESS_MULTIPLIER, INCORRECT_TOOL_PENALTY, INVENTORY_SLOTS,
-    ITEM_PICKUP_RADIUS, TOOL_TIER_SPEED_MAP
+    INCORRECT_TOOL_PENALTY, INVENTORY_SLOTS,
+    ITEM_PICKUP_RADIUS, TOOL_TIER_SPEED_MAP, ARMOR_SLOTS
 } from '../core/Constants';
 import { PhysicsSystem } from './PhysicsSystem';
 import { getBlockType } from '../world/BlockRegistry';
 import { Camera } from './Camera';
 import { Inventory } from '../world/Inventory';
-import { ItemEntity } from './ItemEntity';
-import { CraftingSystem } from '../crafting/CraftingSystem';
 import { MouseHandler } from '../input/MouseHandler';
 import { SettingsManager } from '../core/SettingsManager';
 import { TouchHandler } from '../input/TouchHandler';
 import { XPSystem } from '../world/XPSystem';
 import { SoundManager } from '../core/SoundManager';
 import { InputManager } from '../input/InputManager';
+import { ItemRegistry } from '../inventory/ItemRegistry';
+import { ItemEntity } from './ItemEntity';
+import { GAME_MODE_CONFIGS } from '../core/GameModes';
 
 export class Player {
   public profile: PlayerProfile;
@@ -42,6 +42,9 @@ export class Player {
   
   public inventory: Inventory;
   public armorInventory: Inventory;
+  public offhandInventory: Inventory;
+  private survivalInventory: Inventory;
+  private survivalArmorInventory: Inventory;
   
   public activeHotbarSlot: number = 0;
 
@@ -73,6 +76,11 @@ export class Player {
   public isFlying: boolean = false;
   private lastJumpPressTime: number = 0;
 
+  // Game Mode properties
+  public takesDamage: boolean = true;
+  public hasHunger: boolean = true;
+  public interactionRange: number = REACH_DISTANCE;
+
   public eyeOffset: Vector2 = { x: 0, y: 0 };
   public isBlinking: boolean = false;
   private blinkCountdown: number = 3 + Math.random() * 4;
@@ -98,10 +106,56 @@ export class Player {
     this.world = world;
     this.physics = physics;
     this.inventory = new Inventory(INVENTORY_SLOTS);
-    this.armorInventory = new Inventory(4);
+    this.armorInventory = new Inventory(ARMOR_SLOTS);
+    this.offhandInventory = new Inventory(1);
+    this.survivalInventory = new Inventory(INVENTORY_SLOTS);
+    this.survivalArmorInventory = new Inventory(ARMOR_SLOTS);
     this.actionCallback = actionCallback;
     this.xpSystem = new XPSystem();
     this.initializeInventory();
+  }
+
+  public setGameMode(newMode: GameMode) {
+      if (this.gamemode === newMode) return;
+      
+      const oldConfig = GAME_MODE_CONFIGS[this.gamemode];
+      const newConfig = GAME_MODE_CONFIGS[newMode];
+
+      // Handle Inventory Transitions
+      if (this.gamemode === 'survival' && newMode !== 'survival') {
+          this.survivalInventory.fromData(this.inventory.toData());
+          this.survivalArmorInventory.fromData(this.armorInventory.toData());
+      }
+      
+      if (!newConfig.keepInventoryOnSwitch) {
+          this.inventory.clear();
+          this.armorInventory.clear();
+      }
+
+      if (newMode === 'survival' && this.gamemode !== 'survival') {
+          this.inventory.fromData(this.survivalInventory.toData());
+          this.armorInventory.fromData(this.survivalArmorInventory.toData());
+      }
+      
+      this.gamemode = newMode;
+      
+      // Apply new properties
+      this.takesDamage = newConfig.takesDamage;
+      this.hasHunger = newConfig.hasHunger;
+      this.interactionRange = newConfig.interactionRange;
+
+      if (newConfig.canFly) {
+          if(this.gamemode === 'spectator') this.isFlying = true;
+      } else {
+          this.isFlying = false;
+      }
+
+      if (!newConfig.takesDamage) {
+          this.health = MAX_HEALTH;
+      }
+      if (!newConfig.hasHunger) {
+          this.hunger = MAX_HUNGER;
+      }
   }
 
   private initializeInventory() {
@@ -118,14 +172,14 @@ export class Player {
         this.animationState = 'dying';
         return;
     };
-
+    
+    // Spectator has very simple update loop
     if (this.gamemode === 'spectator') {
         this.handleInput(inputState);
         this.position.x += this.velocity.x;
         this.position.y += this.velocity.y;
         this.updateAnimationState(inputState);
         this.updateBlinking(deltaTime);
-        this.updateEyeAndHeadDirection();
         return;
     }
 
@@ -143,7 +197,7 @@ export class Player {
     if (this.placementAnimTimer > 0) this.placementAnimTimer -= deltaTime;
     this.updateTargeting(camera);
     this.handleInput(inputState);
-    if (this.gamemode === 'creative' && this.isFlying) {
+    if (this.isFlying) {
         this.position.x += this.velocity.x;
         this.position.y += this.velocity.y;
         this.onGround = false;
@@ -186,11 +240,11 @@ export class Player {
     if (this.targetBlock) {
         const targetWorldX = (this.targetBlock.x + 0.5) * BLOCK_SIZE;
         const playerWorldX = this.position.x + this.width / 2;
-        targetEyeX = (targetWorldX - playerWorldX) / REACH_DISTANCE;
+        targetEyeX = (targetWorldX - playerWorldX) / this.interactionRange;
 
         const targetWorldY = (this.targetBlock.y + 0.5) * BLOCK_SIZE;
         const playerWorldY = this.position.y + this.height * 0.2; // eye level
-        targetEyeY = (targetWorldY - playerWorldY) / REACH_DISTANCE;
+        targetEyeY = (targetWorldY - playerWorldY) / this.interactionRange;
     } else {
         targetEyeX = this.facingDirection * 0.4;
     }
@@ -278,7 +332,7 @@ export class Player {
           const dy = playerCenterY - blockCenterY;
           const distance = Math.sqrt(dx * dx + dy * dy);
           const candidateTarget = { x: blockX, y: blockY };
-          if (distance <= REACH_DISTANCE && this.checkLineOfSight(candidateTarget)) this.targetBlock = candidateTarget;
+          if (distance <= this.interactionRange && this.checkLineOfSight(candidateTarget)) this.targetBlock = candidateTarget;
           else this.targetBlock = null;
       } else {
           const interactionTapPos = this.touchHandler.getInteractionTap();
@@ -307,7 +361,7 @@ export class Player {
                       }
                   }
               }
-              if (distance <= REACH_DISTANCE && canTarget && this.checkLineOfSight({ x: blockX, y: blockY })) this.targetBlock = { x: blockX, y: blockY };
+              if (distance <= this.interactionRange && canTarget && this.checkLineOfSight({ x: blockX, y: blockY })) this.targetBlock = { x: blockX, y: blockY };
               else this.targetBlock = null;
           }
       }
@@ -315,11 +369,10 @@ export class Player {
 
   private handleInput(inputState: InputState): void {
     const speed = this.isSneaking ? PLAYER_SNEAK_SPEED : (this.isSprinting ? PLAYER_SPRINT_SPEED : PLAYER_MOVE_SPEED);
-    if ((this.gamemode === 'creative' && this.isFlying) || this.gamemode === 'spectator') {
+    if (this.isFlying) {
       this.velocity.x = inputState.moveX * speed;
       this.velocity.y = 0;
       if (inputState.jump.pressed) this.velocity.y = -speed;
-      // FIX: Access .pressed property for sneak state
       if (inputState.sneak.pressed) this.velocity.y = speed;
     } else {
       this.velocity.x = inputState.moveX * speed;
@@ -333,13 +386,13 @@ export class Player {
     }
 
     for (let i = 1; i <= 9; i++) {
-        if (this.inputManager.isKeyPressed(i.toString())) {
+        if (this.inputManager.isKeyReleased(i.toString())) {
             this.activeHotbarSlot = i - 1;
         }
     }
 
     if (inputState.jump.justPressed) {
-      if (this.gamemode === 'creative') {
+      if (GAME_MODE_CONFIGS[this.gamemode].canFly) {
         const now = Date.now();
         if (now - this.lastJumpPressTime < 300) this.isFlying = !this.isFlying;
         this.lastJumpPressTime = now;
@@ -351,15 +404,69 @@ export class Player {
         this.fallDistance = 0;
       }
     }
-    // FIX: Access .pressed property for sneak state
+
     this.isSneaking = inputState.sneak.pressed;
-    // FIX: Access .pressed property for sprint state
     this.isSprinting = inputState.sprint.pressed && !this.isSneaking && inputState.moveX !== 0 && this.onGround;
-    if (inputState.inventory) this.actionCallback('openInventory', {});
 
     if (inputState.drop) {
         this.dropSelectedItem();
     }
+    
+    if (inputState.pickBlock) {
+        this.pickBlock();
+    }
+
+    if (inputState.swapHands) {
+        this.swapHands();
+    }
+  }
+  
+  private swapHands() {
+      const hotbarItem = this.inventory.getItem(this.activeHotbarSlot);
+      const offhandItem = this.offhandInventory.getItem(0);
+      this.inventory.setItem(this.activeHotbarSlot, offhandItem);
+      this.offhandInventory.setItem(0, hotbarItem);
+  }
+
+  private pickBlock(): void {
+      if (this.gamemode !== 'creative' || !this.targetBlock) return;
+      
+      const blockId = this.world.getBlock(this.targetBlock.x, this.targetBlock.y);
+      if (blockId === BlockId.AIR) return;
+
+      const blockType = getBlockType(blockId);
+      if (!blockType) return;
+      
+      const itemId = blockType.itemDrop?.itemId || (blockId as unknown as ItemId);
+      const itemInfo = ItemRegistry.getItemInfo(itemId);
+      if (!itemInfo) return;
+      
+      // Try to find if we already have this item in the hotbar
+      for (let i = 0; i < HOTBAR_SLOTS; i++) {
+          const item = this.inventory.getItem(i);
+          if (item && item.id === itemId) {
+              this.activeHotbarSlot = i;
+              return;
+          }
+      }
+      
+      // Try to replace the currently selected empty slot
+      if (!this.inventory.getItem(this.activeHotbarSlot)) {
+          this.inventory.setItem(this.activeHotbarSlot, { id: itemId, count: itemInfo.maxStackSize });
+          return;
+      }
+
+      // Find the first empty slot in the hotbar
+      for (let i = 0; i < HOTBAR_SLOTS; i++) {
+          if (!this.inventory.getItem(i)) {
+              this.inventory.setItem(i, { id: itemId, count: itemInfo.maxStackSize });
+              this.activeHotbarSlot = i;
+              return;
+          }
+      }
+
+      // If all else fails, replace the currently selected item
+      this.inventory.setItem(this.activeHotbarSlot, { id: itemId, count: itemInfo.maxStackSize });
   }
 
   private dropSelectedItem(): void {
@@ -386,6 +493,8 @@ export class Player {
   }
 
   private handleFallDamage(camera: Camera): void {
+    if (!this.takesDamage) return;
+
     if (this.velocity.y > 0 && !this.onGround) {
         this.fallDistance += this.velocity.y;
     }
@@ -410,7 +519,7 @@ export class Player {
   }
   
   public takeDamage(amount: number, cause: string, camera: Camera): void {
-    if (this.gamemode === 'creative' || this.isDead || this.gamemode === 'spectator') return;
+    if (!this.takesDamage || this.isDead) return;
     this.health -= amount;
     this.justTookDamage = true;
     camera.triggerShake(5, 0.3);
@@ -428,7 +537,8 @@ export class Player {
   }
   
   private handleBlockInteraction(inputState: InputState, camera: Camera): void {
-    if (this.gamemode === 'spectator') {
+    const config = GAME_MODE_CONFIGS[this.gamemode];
+    if (!config.canInteract) {
         this.breakingBlock = null;
         this.isMining = false;
         return;
@@ -466,16 +576,42 @@ export class Player {
         }
 
         let drop = blockType.itemDrop;
-        if (blockType.id === BlockId.STONE) {
+        if (blockType.minToolTier && this.gamemode === 'survival') {
             const heldItem = this.inventory.getItem(this.activeHotbarSlot);
-            const itemInfo = heldItem ? CraftingSystem.getItemInfo(heldItem.id) : null;
-            if (itemInfo?.toolInfo?.type !== 'pickaxe') drop = undefined;
+            const itemInfo = heldItem ? ItemRegistry.getItemInfo(heldItem.id) : null;
+            const toolInfo = itemInfo ? itemInfo.toolInfo : null;
+            const tiers = ['none', 'wood', 'stone', 'iron', 'diamond'];
+            const requiredTierIndex = tiers.indexOf(blockType.minToolTier);
+            const currentTierIndex = (toolInfo && toolInfo.type === blockType.toolType) ? tiers.indexOf(toolInfo.tier) : 0;
+            if (currentTierIndex < requiredTierIndex) {
+                drop = undefined;
+            }
         }
+
         this.world.setBlock(blockX, blockY, BlockId.AIR);
         if (drop && this.gamemode === 'survival') {
+          // Special drop logic
+          if (blockType.id === BlockId.GRAVEL && Math.random() < 0.1) {
+              drop = { itemId: ItemId.FLINT, min: 1, max: 1 };
+          }
+
           const count = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
-          this.actionCallback('breakBlock', { x: blockX, y: blockY, item: { id: drop.itemId, count }, blockType });
+          if (count > 0) {
+            this.actionCallback('breakBlock', { x: blockX, y: blockY, item: { id: drop.itemId, count }, blockType });
+          }
         }
+        
+        // Sapling Drop Logic
+        if (this.gamemode === 'survival' && blockType.id !== BlockId.AIR) {
+            let saplingId: ItemId | null = null;
+            if (blockType.id === BlockId.OAK_LEAVES) saplingId = ItemId.OAK_SAPLING;
+            if (blockType.id === BlockId.SPRUCE_LEAVES) saplingId = ItemId.SPRUCE_SAPLING;
+            if (blockType.id === BlockId.BIRCH_LEAVES) saplingId = ItemId.BIRCH_SAPLING;
+            if (saplingId && Math.random() < 0.1) { // 10% chance
+                this.actionCallback('breakBlock', { x: blockX, y: blockY, item: { id: saplingId, count: 1 }, blockType });
+            }
+        }
+        
         this.breakingBlock = null;
         this.isMining = false;
       }
@@ -485,19 +621,36 @@ export class Player {
     }
 
     if (inputState.place) {
-      if (blockId === BlockId.CRAFTING_TABLE) {
-        this.actionCallback('openCraftingTable', {});
-        return;
+      const heldItem = this.inventory.getItem(this.activeHotbarSlot);
+
+      // Hoe Logic
+      if (heldItem) {
+        const itemInfo = ItemRegistry.getItemInfo(heldItem.id);
+        if (itemInfo?.toolInfo?.type === 'hoe' && (blockId === BlockId.DIRT || blockId === BlockId.GRASS)) {
+            this.world.setBlock(blockX, blockY, BlockId.FARMLAND);
+            // TODO: Damage tool
+            return;
+        }
       }
-      if (blockId === BlockId.CHEST) {
-        const chestInventory = this.world.getChestInventory(blockX, blockY);
-        if (chestInventory) this.actionCallback('openChest', { chestInventory });
-        return;
+      
+      // Block Interaction Logic
+      switch(blockId) {
+        case BlockId.CRAFTING_TABLE:
+            this.actionCallback('openCraftingTable', {});
+            return;
+        case BlockId.FURNACE:
+        case BlockId.FURNACE_LIT:
+            this.actionCallback('openFurnace', { x: blockX, y: blockY });
+            return;
+        case BlockId.CHEST:
+            const chestInventory = this.world.getChestInventory(blockX, blockY);
+            if (chestInventory) this.actionCallback('openChest', { chestInventory });
+            return;
       }
 
-      const heldItem = this.inventory.getItem(this.activeHotbarSlot);
+      // Block Placement Logic
       if (heldItem) {
-        const itemInfo = CraftingSystem.getItemInfo(heldItem.id);
+        const itemInfo = ItemRegistry.getItemInfo(heldItem.id);
         if (itemInfo && itemInfo.blockId) {
           let placeX: number, placeY: number;
           if (!(blockType && blockType.isSolid)) {
@@ -540,26 +693,45 @@ export class Player {
   }
 
   private getMiningSpeed(blockType: BlockType): number {
-    if (this.gamemode === 'creative') return Infinity;
+    if (GAME_MODE_CONFIGS[this.gamemode].instantBreak) return blockType.hardness;
+    
     const heldItem = this.inventory.getItem(this.activeHotbarSlot);
-    const itemInfo = heldItem ? CraftingSystem.getItemInfo(heldItem.id) : null;
+    const itemInfo = heldItem ? ItemRegistry.getItemInfo(heldItem.id) : null;
     const toolInfo = itemInfo ? itemInfo.toolInfo : null;
-    let speed = 1;
-    let canMine = true;
-    if (blockType.minToolTier) {
-      const tiers = ['none', 'wood', 'stone', 'iron', 'diamond'];
-      const requiredTierIndex = tiers.indexOf(blockType.minToolTier);
-      const currentTierIndex = toolInfo ? tiers.indexOf(toolInfo.tier) : 0;
-      if (currentTierIndex < requiredTierIndex) canMine = false;
+    
+    // Calculate speed multiplier
+    let speedMultiplier = 1; // Base speed for hand
+    if (toolInfo && toolInfo.type === blockType.toolType) {
+        speedMultiplier = TOOL_TIER_SPEED_MAP[toolInfo.tier];
     }
-    if (!canMine) return 0.3;
-    if (toolInfo && toolInfo.type === blockType.toolType) speed *= TOOL_TIER_SPEED_MAP[toolInfo.tier];
-    else if (blockType.toolType) speed *= INCORRECT_TOOL_PENALTY;
-    return speed * TOOL_EFFECTIVENESS_MULTIPLIER;
+
+    // Calculate penalty for incorrect tool type
+    let penalty = 1;
+    if (blockType.toolType && (!toolInfo || toolInfo.type !== blockType.toolType)) {
+        penalty = INCORRECT_TOOL_PENALTY;
+    }
+    
+    // Check if tool tier is sufficient
+    if (blockType.minToolTier && this.gamemode === 'survival') {
+        const tiers = ['none', 'wood', 'stone', 'iron', 'diamond'];
+        const requiredTierIndex = tiers.indexOf(blockType.minToolTier);
+        const currentTierIndex = (toolInfo && toolInfo.type === blockType.toolType) ? tiers.indexOf(toolInfo.tier) : 0;
+        if (currentTierIndex < requiredTierIndex) {
+            // If the tool is of the right type but wrong tier, it breaks, but doesn't drop anything (handled in break logic)
+            // It mines very slowly
+            penalty = 0.2;
+        }
+    }
+
+    return 1 * speedMultiplier * penalty;
   }
 
   private updateVitals(deltaTime: number, camera: Camera): void {
-    if (this.gamemode === 'creative' || this.gamemode === 'spectator') return;
+    if (!this.hasHunger) {
+        this.hunger = MAX_HUNGER;
+        this.health = MAX_HEALTH;
+        return;
+    }
 
     this.timeSinceHungerTick += deltaTime;
     if (this.timeSinceHungerTick > 20) {
@@ -617,6 +789,7 @@ export class Player {
           experience: this.experience,
           inventory: this.inventory.toData(),
           armorInventory: this.armorInventory.toData(),
+          offhandInventory: this.offhandInventory.toData(),
       };
   }
 
@@ -628,5 +801,8 @@ export class Player {
       this.experience = data.experience;
       this.inventory.fromData(data.inventory);
       this.armorInventory.fromData(data.armorInventory);
+      if (data.offhandInventory) {
+        this.offhandInventory.fromData(data.offhandInventory);
+      }
   }
 }

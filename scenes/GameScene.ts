@@ -1,4 +1,3 @@
-
 import { Scene, SceneManager } from './SceneManager';
 import { ChunkSystem } from '../world/ChunkSystem';
 import { Player } from '../entities/Player';
@@ -10,16 +9,17 @@ import { InventoryUI } from '../ui/InventoryUI';
 import { CraftingSystem } from '../crafting/CraftingSystem';
 import { ItemEntity } from '../entities/ItemEntity';
 import { PhysicsSystem } from '../entities/PhysicsSystem';
-import { BLOCK_SIZE, HOTBAR_SLOTS } from '../core/Constants';
+import { BLOCK_SIZE, HOTBAR_SLOTS, MAX_HEALTH, MAX_HUNGER } from '../core/Constants';
 import { TitleScene } from './TitleScene';
 import { ControlManager } from '../core/Controls';
-import { Vector2, WorldData } from '../types';
+import { GameMode, InputState, Vector2, WorldData } from '../types';
 import { TouchControlsUI } from '../ui/TouchControlsUI';
 import { SettingsScene } from './SettingsScene';
 import { SettingsManager } from '../core/SettingsManager';
 import { WorldStorage } from '../core/WorldStorage';
 import { SoundManager } from '../core/SoundManager';
 import { ProfileManager } from '../core/ProfileManager';
+import { ChatUI } from '../ui/ChatUI';
 
 export class GameScene implements Scene {
   private sceneManager: SceneManager;
@@ -32,6 +32,7 @@ export class GameScene implements Scene {
   private hud: HUD;
   private animationSystem: AnimationSystem;
   private inventoryUI: InventoryUI;
+  private chatUI: ChatUI;
   private craftingSystem: CraftingSystem;
   private itemEntities: ItemEntity[] = [];
   private physicsSystem: PhysicsSystem;
@@ -73,7 +74,7 @@ export class GameScene implements Scene {
 
     this.player = new Player(activeProfile, this.worldData.metadata.spawnPoint, this.world, this.sceneManager.mouseHandler, this.sceneManager.touchHandler, this.sceneManager.inputManager, this.physicsSystem, this.onPlayerAction);
     this.player.fromData(this.worldData.player);
-    this.player.gamemode = this.worldData.metadata.gameMode;
+    this.player.setGameMode(this.worldData.metadata.gameMode);
 
     const canvas = this.sceneManager.mouseHandler['canvas'] as HTMLCanvasElement;
     this.camera = new Camera(canvas.width, canvas.height, this.player);
@@ -81,7 +82,8 @@ export class GameScene implements Scene {
     this.hud = new HUD(this.player, this.touchControlsUI, this.sceneManager.touchHandler, this.togglePause);
     this.animationSystem = new AnimationSystem();
     this.craftingSystem = new CraftingSystem();
-    this.inventoryUI = new InventoryUI(this.player, this.craftingSystem, this.sceneManager.mouseHandler, this.sceneManager.touchHandler);
+    this.inventoryUI = new InventoryUI(this.player, this.craftingSystem, this.sceneManager.mouseHandler, this.sceneManager.touchHandler, this.world, this.onPlayerAction);
+    this.chatUI = new ChatUI();
 
     this.setupMenus(canvas);
   }
@@ -89,14 +91,26 @@ export class GameScene implements Scene {
   public togglePause = () => {
       this.isPaused = !this.isPaused;
   }
+  
+  private cycleGamemode() {
+      const modes: GameMode[] = ['survival', 'creative', 'spectator'];
+      const currentIndex = modes.indexOf(this.player.gamemode);
+      const nextIndex = (currentIndex + 1) % modes.length;
+      const newMode = modes[nextIndex];
+      this.player.setGameMode(newMode);
+      this.worldData.metadata.gameMode = newMode;
+      const capitalized = newMode.charAt(0).toUpperCase() + newMode.slice(1);
+      this.hud.showNotification(`Game mode set to ${capitalized}`);
+  }
 
   private setupMenus(canvas: HTMLCanvasElement) {
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
     this.pauseMenuButtons = [
-        { label: 'Resume', rect: { x: cx - 200, y: cy - 50, w: 400, h: 50 }, action: () => { SoundManager.instance.playSound('ui.click'); this.isPaused = false } },
-        { label: 'Settings', rect: { x: cx - 200, y: cy + 20, w: 400, h: 50 }, action: () => {SoundManager.instance.playSound('ui.click'); this.sceneManager.pushScene(new SettingsScene(this.sceneManager))} },
-        { label: 'Save & Quit', rect: { x: cx - 200, y: cy + 90, w: 400, h: 50 }, action: () => { SoundManager.instance.playSound('ui.click'); this.saveAndQuit() }},
+        { label: 'Resume', rect: { x: cx - 200, y: cy - 85, w: 400, h: 50 }, action: () => { SoundManager.instance.playSound('ui.click'); this.isPaused = false } },
+        { label: 'Settings', rect: { x: cx - 200, y: cy - 15, w: 400, h: 50 }, action: () => {SoundManager.instance.playSound('ui.click'); this.sceneManager.pushScene(new SettingsScene(this.sceneManager))} },
+        { label: 'Cycle Gamemode', rect: { x: cx - 200, y: cy + 55, w: 400, h: 50 }, action: () => { SoundManager.instance.playSound('ui.click'); this.cycleGamemode() }},
+        { label: 'Save & Quit', rect: { x: cx - 200, y: cy + 125, w: 400, h: 50 }, action: () => { SoundManager.instance.playSound('ui.click'); this.saveAndQuit() }},
     ];
     this.deathMenuButtons = [
         { label: 'Respawn', rect: { x: cx - 200, y: cy, w: 400, h: 50 }, action: () => { SoundManager.instance.playSound('ui.click'); this.player.respawn(); this.deathAnimationTimer = 0; }},
@@ -106,9 +120,27 @@ export class GameScene implements Scene {
 
   enter(): void {
       window.addEventListener('beforeunload', this.saveOnExit);
+      
+      const controlScheme = SettingsManager.instance.getEffectiveControlScheme();
+
+      // Register hotbar slots for touch and now mouse input
+      for (let i = 0; i < HOTBAR_SLOTS; i++) {
+          const rect = this.hud.getHotbarSlotRect(i);
+          const callback = () => { this.player.activeHotbarSlot = i; };
+          if (controlScheme === 'touch') {
+              this.sceneManager.touchHandler.registerTappableRect(`hotbar_${i}`, rect, callback);
+          }
+          this.sceneManager.mouseHandler['registerClickableRect']?.(`hotbar_${i}`, rect, callback);
+      }
   }
   exit(): void {
       window.removeEventListener('beforeunload', this.saveOnExit);
+      
+      // Unregister hotbar slots
+      for (let i = 0; i < HOTBAR_SLOTS; i++) {
+          this.sceneManager.touchHandler.unregisterTappableRect(`hotbar_${i}`);
+          this.sceneManager.mouseHandler['unregisterClickableRect']?.(`hotbar_${i}`);
+      }
   }
 
   private saveOnExit = () => {
@@ -124,6 +156,7 @@ export class GameScene implements Scene {
     this.worldData.player = this.player.toData();
     this.worldData.chunks = this.world.toData();
     this.worldData.metadata.lastPlayed = Date.now();
+    this.worldData.metadata.gameMode = this.player.gamemode;
     WorldStorage.saveWorld(this.worldData);
     this.hud.displaySaveIndicator();
     console.log(`World "${this.worldData.metadata.name}" saved.`);
@@ -154,13 +187,16 @@ export class GameScene implements Scene {
         SoundManager.instance.playSound(`block.place`);
         break;
       case 'openInventory':
-        this.inventoryUI.openPlayerInventory();
+        this.inventoryUI.open('player_survival');
         break;
       case 'openCraftingTable':
-        this.inventoryUI.openCraftingTable();
+        this.inventoryUI.open('crafting_table');
+        break;
+      case 'openFurnace':
+        this.inventoryUI.open('furnace', { worldX: data.x, worldY: data.y });
         break;
       case 'openChest':
-        this.inventoryUI.openChest(data.chestInventory);
+        //this.inventoryUI.openChest(data.chestInventory);
         break;
       case 'dropItem': {
         const itemEntity = new ItemEntity(data.position, data.item);
@@ -173,6 +209,8 @@ export class GameScene implements Scene {
   };
   
   update(deltaTime: number): void {
+    const inputState = this.controlManager.update();
+
     if (this.player.isDead) {
       this.deathAnimationTimer += deltaTime;
       this.animationSystem.update(deltaTime, this.player);
@@ -182,15 +220,37 @@ export class GameScene implements Scene {
       }
       return;
     }
+
+    // --- System-level actions from ControlManager ---
+    if (inputState.pause) {
+        if (this.chatUI.isOpen) this.chatUI.toggle();
+        else if (this.inventoryUI.isOpen()) this.inventoryUI.close();
+        else this.togglePause();
+    }
+    if (inputState.openChat) {
+        if (!this.inventoryUI.isOpen() && !this.isPaused) this.chatUI.toggle();
+    }
+    if (inputState.screenshot) this.takeScreenshot();
+    if (inputState.toggleDebug) this.hud.toggleDebugOverlay();
+    if (inputState.toggleFullscreen) this.toggleFullscreen();
     
-    if (this.sceneManager.inputManager.isKeyPressed('escape')) {
-        if(this.inventoryUI.isOpen()){
+    if (inputState.inventory) {
+        if (this.inventoryUI.isOpen()) {
             this.inventoryUI.close();
-        } else {
-            this.togglePause();
+        } else if (!this.chatUI.isOpen && !this.isPaused) {
+            this.onPlayerAction('openInventory', {});
         }
     }
     
+    // Stop player movement/actions if chat is open
+    if (this.chatUI.isOpen) {
+        return;
+    }
+
+    if (inputState.gamemodeSwitch) {
+        this.cycleGamemode();
+    }
+
     if (this.isPaused) {
       this.updateMenu(this.pauseMenuButtons);
       return;
@@ -201,9 +261,9 @@ export class GameScene implements Scene {
         return;
     }
     
-    const inputState = this.controlManager.update();
     this.player.update(deltaTime, this.camera, inputState);
     this.world.update(this.player.position);
+    this.world.updateBlockEntities(deltaTime);
     this.camera.update(deltaTime);
     this.animationSystem.update(deltaTime, this.player);
     this.hud.update(deltaTime);
@@ -283,6 +343,8 @@ export class GameScene implements Scene {
     if (this.inventoryUI.isOpen()) {
       this.inventoryUI.render(ctx);
     }
+
+    this.chatUI.render(ctx);
   }
 
   private renderMenu(ctx: CanvasRenderingContext2D, title: string, buttons: any[]) {
@@ -292,7 +354,7 @@ export class GameScene implements Scene {
       ctx.font = "60px Minecraftia";
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
-      ctx.fillText(title, ctx.canvas.width / 2, ctx.canvas.height / 2 - 120);
+      ctx.fillText(title, ctx.canvas.width / 2, ctx.canvas.height / 2 - 180);
 
       buttons.forEach((button) => {
           ctx.fillStyle = this.hoveredButton === button ? '#b0b0b0' : '#7f7f7f';
@@ -339,5 +401,23 @@ export class GameScene implements Scene {
         });
       }
       ctx.globalAlpha = 1.0;
+  }
+
+  private takeScreenshot() {
+    const canvas = this.sceneManager.mouseHandler['canvas'] as HTMLCanvasElement;
+    const link = document.createElement('a');
+    link.download = `minecraft2d_screenshot_${Date.now()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  }
+
+  private toggleFullscreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+            console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+        });
+    } else if (document.exitFullscreen) {
+        document.exitFullscreen();
+    }
   }
 }

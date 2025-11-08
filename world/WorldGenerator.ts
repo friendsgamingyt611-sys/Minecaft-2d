@@ -1,5 +1,4 @@
 
-
 import { TerrainNoise } from './TerrainNoise';
 import { CHUNK_SIZE } from '../core/Constants';
 import { BlockId, Biome, BiomeId } from '../types';
@@ -60,9 +59,26 @@ export class WorldGenerator {
       if (worldY > 5 && worldY < 64 && oreNoise > 0.7) {
         if(this.noise.random() < 0.02) chunk.setBlock(x,y, BlockId.IRON_ORE);
       }
+      // Gold
+      if (worldY > 5 && worldY < 32 && oreNoise > 0.8) {
+        if(this.noise.random() < 0.01) chunk.setBlock(x,y, BlockId.GOLD_ORE);
+      }
+      // Redstone
+      if (worldY > 5 && worldY < 16 && oreNoise > 0.8) {
+        if(this.noise.random() < 0.015) chunk.setBlock(x,y, BlockId.REDSTONE_ORE);
+      }
+      // Lapis
+      if (worldY > 14 && worldY < 23 && oreNoise > 0.75) {
+          if(this.noise.random() < 0.012) chunk.setBlock(x,y, BlockId.LAPIS_LAZULI_ORE);
+      }
       // Diamond
       if (worldY > 5 && worldY < 16 && oreNoise > 0.85) {
         if(this.noise.random() < 0.008) chunk.setBlock(x,y, BlockId.DIAMOND_ORE);
+      }
+      // Emerald (only in forests/mountains)
+      const biome = this.getBiome(chunk.chunkX * CHUNK_SIZE + x);
+      if (biome.id === BiomeId.FOREST && worldY > 4 && worldY < 32 && oreNoise > 0.88) {
+          if(this.noise.random() < 0.007) chunk.setBlock(x,y, BlockId.EMERALD_ORE);
       }
   }
 

@@ -1,5 +1,16 @@
 
 
+export type ItemCategory = 
+  | 'Building Blocks'
+  | 'Decorations'
+  | 'Redstone'
+  | 'Transportation'
+  | 'Miscellaneous'
+  | 'Foodstuffs'
+  | 'Tools & Combat'
+  | 'Brewing'
+  | 'Materials';
+
 export interface Vector2 {
   x: number;
   y: number;
@@ -26,6 +37,25 @@ export enum BlockId {
   BIRCH_LOG = 17,
   BIRCH_LEAVES = 18,
   BIRCH_PLANKS = 19,
+  FURNACE = 20,
+  FURNACE_LIT = 21,
+  SAND = 22,
+  GRAVEL = 23,
+  GOLD_ORE = 24,
+  REDSTONE_ORE = 25,
+  EMERALD_ORE = 26,
+  STONE_BRICKS = 27,
+  GLASS = 28,
+  TORCH = 29,
+  REDSTONE_ORE_LIT = 30,
+  SMOOTH_STONE = 31,
+  LAPIS_LAZULI_ORE = 32,
+  OBSIDIAN = 33,
+  OAK_SAPLING = 34,
+  SPRUCE_SAPLING = 35,
+  BIRCH_SAPLING = 36,
+  FARMLAND = 37,
+  FARMLAND_WET = 38,
 }
 
 export enum ItemId {
@@ -35,6 +65,12 @@ export enum ItemId {
   CRAFTING_TABLE = 12, CHEST = 13,
   SPRUCE_LOG = 14, SPRUCE_LEAVES = 15, SPRUCE_PLANKS = 16,
   BIRCH_LOG = 17, BIRCH_LEAVES = 18, BIRCH_PLANKS = 19,
+  FURNACE = 20,
+  SAND = 22, GRAVEL = 23, GOLD_ORE = 24, REDSTONE_ORE = 25, EMERALD_ORE = 26,
+  STONE_BRICKS = 27, GLASS = 28, TORCH = 29,
+  SMOOTH_STONE = 31, LAPIS_LAZULI_ORE = 32, OBSIDIAN = 33,
+  OAK_SAPLING = 34, SPRUCE_SAPLING = 35, BIRCH_SAPLING = 36,
+  FARMLAND = 37,
 
   // Non-Block Items
   STICK = 256,
@@ -56,11 +92,39 @@ export enum ItemId {
   WOODEN_HOE = 272,
   STONE_HOE = 273,
   IRON_HOE = 274,
+  IRON_HELMET = 275,
+  IRON_CHESTPLATE = 276,
+  IRON_LEGGINGS = 277,
+  IRON_BOOTS = 278,
+  DIAMOND_PICKAXE = 279,
+  DIAMOND_AXE = 280,
+  DIAMOND_SHOVEL = 281,
+  DIAMOND_SWORD = 282,
+  DIAMOND_HOE = 283,
+  RAW_IRON = 284,
+  RAW_GOLD = 285,
+  GOLD_INGOT = 286,
+  REDSTONE_DUST = 287,
+  EMERALD = 288,
+  FLINT = 289,
+  DIAMOND_HELMET = 290,
+  DIAMOND_CHESTPLATE = 291,
+  DIAMOND_LEGGINGS = 292,
+  DIAMOND_BOOTS = 293,
+  SHIELD = 294,
+  LEATHER = 295,
+  LEATHER_HELMET = 296,
+  LEATHER_CHESTPLATE = 297,
+  LEATHER_LEGGINGS = 298,
+  LEATHER_BOOTS = 299,
+  LAPIS_LAZULI = 300,
 }
 
 export type ToolType = 'pickaxe' | 'axe' | 'shovel' | 'sword' | 'hoe' | 'none';
 export type ToolTier = 'wood' | 'stone' | 'iron' | 'diamond' | 'none';
 export type GameMode = 'survival' | 'creative' | 'spectator';
+export type SlotType = 'player' | 'hotbar' | 'armor' | 'crafting_input' | 'crafting_output' | 'furnace_input' | 'furnace_fuel' | 'furnace_output' | 'offhand' | 'creative_display';
+
 
 export interface Item {
     id: ItemId;
@@ -71,13 +135,22 @@ export interface Item {
 export interface ItemInfo {
     name: string;
     maxStackSize: number;
+    category: ItemCategory;
     toolInfo?: ToolInfo;
+    armorInfo?: ArmorInfo;
     blockId?: BlockId; // If this item can be placed as a block
 }
 
 export interface ToolInfo {
     type: ToolType;
     tier: ToolTier;
+    durability: number;
+    damage?: number;
+}
+
+export interface ArmorInfo {
+    type: 'helmet' | 'chestplate' | 'leggings' | 'boots';
+    protection: number;
     durability: number;
 }
 
@@ -86,16 +159,17 @@ export interface BlockType {
   name: string;
   color: string;
   isSolid: boolean;
-  hardness: number; // Time to break in frames (60fps)
+  hardness: number; // Time to break in frames with hand (60fps)
   isIndestructible?: boolean;
-  texture?: (ctx: CanvasRenderingContext2D, x: number, y: number, size: number) => void;
+  texture?: (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, data?: any) => void;
   isLightTransparent?: boolean;
-  // V2.5 Additions
+  isBlockEntity?: boolean;
+  lightLevel?: number; // 0-15
   itemDrop?: { itemId: ItemId; min: number; max: number; };
   toolType?: ToolType;
   minToolTier?: ToolTier;
   xpDrop?: { min: number; max: number; };
-  soundType?: 'stone' | 'wood' | 'dirt' | 'grass';
+  soundType?: 'stone' | 'wood' | 'dirt' | 'grass' | 'sand' | 'gravel' | 'glass';
 }
 
 export interface GameStateOptions {
@@ -176,8 +250,18 @@ export interface InputState {
     },
     place: boolean; // right-click or place button (is clicked)
     destroy: boolean; // left-click or destroy button (is down)
-    inventory: boolean; // 'e' or inventory button (is pressed)
     drop: boolean; // 'q' or drop button (is pressed)
+    pickBlock: boolean; // middle-click
+    swapHands: boolean; // 'f' key
+    
+    // FIX: Centralized system-level actions
+    inventory: boolean; // 'e' key
+    gamemodeSwitch: boolean; // 'm' key
+    pause: boolean; // 'escape' key
+    toggleDebug: boolean; // 'f3' key
+    screenshot: boolean; // 'f2' key
+    toggleFullscreen: boolean; // 'f11' key
+    openChat: boolean; // 't' key
 }
 
 export interface XPOrb {
@@ -203,6 +287,14 @@ export interface InventoryData {
     items: (Item | null)[];
 }
 
+export interface BlockEntityData {
+    inventory?: InventoryData;
+    smeltTime?: number;
+    fuelTime?: number;
+    maxFuelTime?: number;
+}
+
+
 export interface PlayerData {
     position: Vector2;
     health: number;
@@ -211,11 +303,12 @@ export interface PlayerData {
     experience: number;
     inventory: InventoryData;
     armorInventory: InventoryData;
+    offhandInventory: InventoryData;
 }
 
 export interface ChunkData {
     blocks: number[]; // Store as array for JSON serialization
-    blockEntities: [string, any][];
+    blockEntities: [string, BlockEntityData][];
 }
 
 export interface WorldData {

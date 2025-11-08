@@ -1,5 +1,3 @@
-
-
 import { TOUCH_JOYSTICK_RADIUS, TOUCH_JOYSTICK_KNOB_RADIUS, TOUCH_BUTTON_SIZE, TOUCH_BUTTON_MARGIN, HOTBAR_SLOT_SIZE, HOTBAR_SLOTS } from '../core/Constants';
 import { SettingsManager } from '../core/SettingsManager';
 import { Vector2 } from '../types';
@@ -11,15 +9,22 @@ interface Touch {
     startX: number;
     startY: number;
     isUITouch?: boolean;
+    uiElementId?: string; // ID of the UI element this touch started on
 }
 
-type TouchButtonType = 'jump' | 'sneak' | 'action' | 'inventory' | 'drop' | 'sprint';
+type TouchButtonType = 'jump' | 'sneak' | 'action' | 'inventory' | 'drop' | 'sprint' | 'swapHands';
 
 interface TouchButton {
     id: TouchButtonType;
     rect: { x: number; y: number; w: number; h: number };
     isPressed: boolean;
     justPressed: boolean;
+}
+
+interface TappableRect {
+    id: string;
+    rect: { x: number, y: number, w: number, h: number };
+    callback: () => void;
 }
 
 export class TouchHandler {
@@ -38,6 +43,9 @@ export class TouchHandler {
     private buttonTouchIds: Map<number, TouchButtonType> = new Map();
     private joystickActivationZone: { x: number; y: number; w: number; h: number; };
 
+    // Generic UI registration
+    private tappableRects: Map<string, TappableRect> = new Map();
+
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
         this.joystickActivationZone = { x: 0, y: 0, w: 0, h: 0 }; // Initialized in updateButtonLayout
@@ -54,42 +62,32 @@ export class TouchHandler {
 
         this.joystickActivationZone = {
             x: 0,
-            y: height / 2,
+            y: height / 3,
             w: width / 3,
-            h: height / 2
+            h: height * 2/3
         };
 
-        // Hotbar layout calculation (mirrored from HUD.ts)
-        const scaledSlotSize = HOTBAR_SLOT_SIZE * guiScale;
-        const hudWidth = HOTBAR_SLOTS * scaledSlotSize;
-        const hotbarStartX = (width - hudWidth) / 2;
-        const hotbarY = height - scaledSlotSize - (20 * guiScale);
+        const hotbarSlotsWidth = HOTBAR_SLOTS * HOTBAR_SLOT_SIZE * guiScale;
+        const hotbarStartX = (width - hotbarSlotsWidth) / 2;
+        const hotbarY = height - (HOTBAR_SLOT_SIZE * guiScale) - (20 * guiScale);
 
-        // New inventory button definition
-        const invButtonSize = scaledSlotSize * 1.1; // Slightly bigger
-        const invButtonMargin = 10 * guiScale;
-        const invButtonX = hotbarStartX - invButtonMargin - invButtonSize;
-        const invButtonY = hotbarY + (scaledSlotSize - invButtonSize) / 2; // Vertically centered with hotbar
-
-        const buttonDefs: { id: TouchButtonType, pos: Vector2, customSize?: number }[] = [
+        const buttonDefs: { id: TouchButtonType, pos: Vector2 }[] = [
             // Right-side main buttons
             { id: 'jump', pos: { x: width - size - margin, y: height - size - margin } },
             { id: 'sneak', pos: { x: width - size * 2 - margin * 2, y: height - size - margin } },
             { id: 'action', pos: { x: width - size - margin, y: height - size * 2 - margin * 2 } },
+            { id: 'swapHands', pos: { x: width - size * 2 - margin * 2, y: height - size * 2 - margin * 2 } },
             
-            // New inventory button beside hotbar
-            { id: 'inventory', pos: { x: invButtonX, y: invButtonY }, customSize: invButtonSize },
-
-            // Sprint button above joystick zone
-            { id: 'sprint', pos: { x: this.joystickActivationZone.x + margin, y: this.joystickActivationZone.y - size - margin } }
+            // Left-side buttons
+            { id: 'inventory', pos: { x: margin, y: hotbarY } },
+            { id: 'sprint', pos: { x: this.joystickActivationZone.w + margin, y: height - size - margin } }
         ];
 
         this.buttons.clear();
         buttonDefs.forEach(def => {
-            const buttonSize = def.customSize || size;
             this.buttons.set(def.id, {
                 id: def.id,
-                rect: { x: def.pos.x, y: def.pos.y, w: buttonSize, h: buttonSize },
+                rect: { x: def.pos.x, y: def.pos.y, w: size, h: size },
                 isPressed: false,
                 justPressed: false
             });
@@ -109,6 +107,16 @@ export class TouchHandler {
         this.justStartedTouches = [];
         this.justEndedTouches = [];
     }
+    
+    // --- Generic UI Registration ---
+    public registerTappableRect(id: string, rect: { x: number, y: number, w: number, h: number }, callback: () => void) {
+        this.tappableRects.set(id, { id, rect, callback });
+    }
+
+    public unregisterTappableRect(id: string) {
+        this.tappableRects.delete(id);
+    }
+    // ---
 
     public getJoystick(): Vector2 { return this.joystickVector; }
     
@@ -198,6 +206,17 @@ export class TouchHandler {
             this.activeTouches.set(touch.identifier, newTouch);
             this.justStartedTouches.push(newTouch);
 
+            // Check custom tappable rects first
+            for (const tappable of this.tappableRects.values()) {
+                if (pos.x > tappable.rect.x && pos.x < tappable.rect.x + tappable.rect.w &&
+                    pos.y > tappable.rect.y && pos.y < tappable.rect.y + tappable.rect.h) {
+                    newTouch.isUITouch = true;
+                    newTouch.uiElementId = tappable.id;
+                    break; // A touch can only start on one thing
+                }
+            }
+            if (newTouch.isUITouch) continue;
+
             // Check if touch is on a button
             for (const button of this.buttons.values()) {
                 if (pos.x > button.rect.x && pos.x < button.rect.x + button.rect.w &&
@@ -206,7 +225,8 @@ export class TouchHandler {
                     button.justPressed = true;
                     this.buttonTouchIds.set(touch.identifier, button.id);
                     newTouch.isUITouch = true;
-                    continue; // A touch can only control one thing
+                    newTouch.uiElementId = button.id;
+                    break;
                 }
             }
             if (newTouch.isUITouch) continue;
@@ -269,9 +289,20 @@ export class TouchHandler {
     private handleTouchEnd = (event: TouchEvent) => {
         event.preventDefault();
         for (const touch of Array.from(event.changedTouches)) {
-            const activeTouch = this.activeTouches.get(touch.identifier);
-            if (activeTouch) {
-                this.justEndedTouches.push({ ...activeTouch });
+            const endedTouch = this.activeTouches.get(touch.identifier);
+            if (endedTouch) {
+                this.justEndedTouches.push({ ...endedTouch });
+                
+                // --- Handle Tappable Rect Logic ---
+                const dx = endedTouch.x - endedTouch.startX;
+                const dy = endedTouch.y - endedTouch.startY;
+                const distanceSq = dx * dx + dy * dy;
+
+                if (endedTouch.uiElementId && distanceSq < 20 * 20) { // It's a tap
+                    const tappable = this.tappableRects.get(endedTouch.uiElementId);
+                    tappable?.callback();
+                }
+                // ---
             }
 
             this.activeTouches.delete(touch.identifier);

@@ -1,37 +1,5 @@
 
-import { Item, ItemId, Recipe, ItemInfo, ToolInfo, BlockId } from '../types';
-
-const ITEM_INFO_MAP: Map<ItemId, ItemInfo> = new Map([
-    // Blocks
-    [ItemId.GRASS, { name: 'Grass Block', maxStackSize: 64, blockId: BlockId.GRASS }],
-    [ItemId.DIRT, { name: 'Dirt', maxStackSize: 64, blockId: BlockId.DIRT }],
-    [ItemId.STONE, { name: 'Stone', maxStackSize: 64, blockId: BlockId.STONE }],
-    [ItemId.COBBLESTONE, { name: 'Cobblestone', maxStackSize: 64, blockId: BlockId.COBBLESTONE }],
-    [ItemId.OAK_LOG, { name: 'Oak Log', maxStackSize: 64, blockId: BlockId.OAK_LOG }],
-    [ItemId.OAK_PLANKS, { name: 'Oak Planks', maxStackSize: 64, blockId: BlockId.OAK_PLANKS }],
-    [ItemId.SPRUCE_LOG, { name: 'Spruce Log', maxStackSize: 64, blockId: BlockId.SPRUCE_LOG }],
-    [ItemId.SPRUCE_PLANKS, { name: 'Spruce Planks', maxStackSize: 64, blockId: BlockId.SPRUCE_PLANKS }],
-    [ItemId.BIRCH_LOG, { name: 'Birch Log', maxStackSize: 64, blockId: BlockId.BIRCH_LOG }],
-    [ItemId.BIRCH_PLANKS, { name: 'Birch Planks', maxStackSize: 64, blockId: BlockId.BIRCH_PLANKS }],
-    [ItemId.CRAFTING_TABLE, { name: 'Crafting Table', maxStackSize: 64, blockId: BlockId.CRAFTING_TABLE }],
-    [ItemId.CHEST, { name: 'Chest', maxStackSize: 64, blockId: BlockId.CHEST }],
-    [ItemId.COAL_ORE, { name: 'Coal Ore', maxStackSize: 64, blockId: BlockId.COAL_ORE }],
-    [ItemId.IRON_ORE, { name: 'Iron Ore', maxStackSize: 64, blockId: BlockId.IRON_ORE }],
-    [ItemId.DIAMOND_ORE, { name: 'Diamond Ore', maxStackSize: 64, blockId: BlockId.DIAMOND_ORE }],
-
-    // Non-block items
-    [ItemId.STICK, { name: 'Stick', maxStackSize: 64 }],
-    [ItemId.COAL, { name: 'Coal', maxStackSize: 64 }],
-    [ItemId.DIAMOND, { name: 'Diamond', maxStackSize: 64 }],
-    
-    // Tools
-    [ItemId.WOODEN_PICKAXE, { name: 'Wooden Pickaxe', maxStackSize: 1, toolInfo: { type: 'pickaxe', tier: 'wood', durability: 59 } }],
-    [ItemId.STONE_PICKAXE, { name: 'Stone Pickaxe', maxStackSize: 1, toolInfo: { type: 'pickaxe', tier: 'stone', durability: 131 } }],
-    [ItemId.WOODEN_AXE, { name: 'Wooden Axe', maxStackSize: 1, toolInfo: { type: 'axe', tier: 'wood', durability: 59 } }],
-    [ItemId.STONE_AXE, { name: 'Stone Axe', maxStackSize: 1, toolInfo: { type: 'axe', tier: 'stone', durability: 131 } }],
-    [ItemId.WOODEN_SHOVEL, { name: 'Wooden Shovel', maxStackSize: 1, toolInfo: { type: 'shovel', tier: 'wood', durability: 59 } }],
-    [ItemId.STONE_SHOVEL, { name: 'Stone Shovel', maxStackSize: 1, toolInfo: { type: 'shovel', tier: 'stone', durability: 131 } }],
-]);
+import { Item, ItemId, Recipe } from '../types';
 
 const RECIPES: Recipe[] = [
     // Wood Planks (shapeless)
@@ -49,36 +17,89 @@ const RECIPES: Recipe[] = [
     { result: { id: ItemId.CRAFTING_TABLE, count: 1 }, shape: [[ItemId.SPRUCE_PLANKS, ItemId.SPRUCE_PLANKS], [ItemId.SPRUCE_PLANKS, ItemId.SPRUCE_PLANKS]] },
     { result: { id: ItemId.CRAFTING_TABLE, count: 1 }, shape: [[ItemId.BIRCH_PLANKS, ItemId.BIRCH_PLANKS], [ItemId.BIRCH_PLANKS, ItemId.BIRCH_PLANKS]] },
 
+    // Furnace
+    { result: { id: ItemId.FURNACE, count: 1 }, shape: [
+        [ItemId.COBBLESTONE, ItemId.COBBLESTONE, ItemId.COBBLESTONE],
+        [ItemId.COBBLESTONE, null, ItemId.COBBLESTONE],
+        [ItemId.COBBLESTONE, ItemId.COBBLESTONE, ItemId.COBBLESTONE],
+    ]},
+
     // Chest
     { result: { id: ItemId.CHEST, count: 1 }, shape: [
         [ItemId.OAK_PLANKS, ItemId.OAK_PLANKS, ItemId.OAK_PLANKS],
         [ItemId.OAK_PLANKS, null, ItemId.OAK_PLANKS],
         [ItemId.OAK_PLANKS, ItemId.OAK_PLANKS, ItemId.OAK_PLANKS],
     ]},
-    // Add Spruce/Birch chest recipes as well
-    
-    // Wooden Tools
-    { result: { id: ItemId.WOODEN_PICKAXE, count: 1 }, shape: [
+
+    // Torch
+    { result: { id: ItemId.TORCH, count: 4 }, shape: [[ItemId.COAL], [ItemId.STICK]] },
+
+    // Stone Bricks
+    { result: { id: ItemId.STONE_BRICKS, count: 4 }, shape: [[ItemId.STONE, ItemId.STONE], [ItemId.STONE, ItemId.STONE]] },
+
+    // Shield
+    { result: { id: ItemId.SHIELD, count: 1 }, shape: [
+        [ItemId.OAK_PLANKS, ItemId.IRON_INGOT, ItemId.OAK_PLANKS],
         [ItemId.OAK_PLANKS, ItemId.OAK_PLANKS, ItemId.OAK_PLANKS],
-        [null, ItemId.STICK, null],
-        [null, ItemId.STICK, null],
+        [null, ItemId.OAK_PLANKS, null]
     ]},
-    // Stone Tools
-    { result: { id: ItemId.STONE_PICKAXE, count: 1 }, shape: [
-        [ItemId.COBBLESTONE, ItemId.COBBLESTONE, ItemId.COBBLESTONE],
-        [null, ItemId.STICK, null],
-        [null, ItemId.STICK, null],
-    ]},
+    
+    // --- TOOLS (WOOD) ---
+    { result: { id: ItemId.WOODEN_PICKAXE, count: 1 }, shape: [ [ItemId.OAK_PLANKS, ItemId.OAK_PLANKS, ItemId.OAK_PLANKS], [null, ItemId.STICK, null], [null, ItemId.STICK, null] ]},
+    { result: { id: ItemId.WOODEN_AXE, count: 1 }, shape: [ [ItemId.OAK_PLANKS, ItemId.OAK_PLANKS, null], [ItemId.OAK_PLANKS, ItemId.STICK, null], [null, ItemId.STICK, null] ]},
+    { result: { id: ItemId.WOODEN_SHOVEL, count: 1 }, shape: [ [ItemId.OAK_PLANKS], [ItemId.STICK], [ItemId.STICK] ]},
+    { result: { id: ItemId.WOODEN_SWORD, count: 1 }, shape: [ [ItemId.OAK_PLANKS], [ItemId.OAK_PLANKS], [ItemId.STICK] ]},
+    { result: { id: ItemId.WOODEN_HOE, count: 1 }, shape: [ [ItemId.OAK_PLANKS, ItemId.OAK_PLANKS, null], [null, ItemId.STICK, null], [null, ItemId.STICK, null] ]},
+
+    // --- TOOLS (STONE) ---
+    { result: { id: ItemId.STONE_PICKAXE, count: 1 }, shape: [ [ItemId.COBBLESTONE, ItemId.COBBLESTONE, ItemId.COBBLESTONE], [null, ItemId.STICK, null], [null, ItemId.STICK, null] ]},
+    { result: { id: ItemId.STONE_AXE, count: 1 }, shape: [ [ItemId.COBBLESTONE, ItemId.COBBLESTONE, null], [ItemId.COBBLESTONE, ItemId.STICK, null], [null, ItemId.STICK, null] ]},
+    { result: { id: ItemId.STONE_SHOVEL, count: 1 }, shape: [ [ItemId.COBBLESTONE], [ItemId.STICK], [ItemId.STICK] ]},
+    { result: { id: ItemId.STONE_SWORD, count: 1 }, shape: [ [ItemId.COBBLESTONE], [ItemId.COBBLESTONE], [ItemId.STICK] ]},
+    { result: { id: ItemId.STONE_HOE, count: 1 }, shape: [ [ItemId.COBBLESTONE, ItemId.COBBLESTONE, null], [null, ItemId.STICK, null], [null, ItemId.STICK, null] ]},
+    
+    // --- TOOLS (IRON) ---
+    { result: { id: ItemId.IRON_PICKAXE, count: 1 }, shape: [ [ItemId.IRON_INGOT, ItemId.IRON_INGOT, ItemId.IRON_INGOT], [null, ItemId.STICK, null], [null, ItemId.STICK, null] ]},
+    { result: { id: ItemId.IRON_AXE, count: 1 }, shape: [ [ItemId.IRON_INGOT, ItemId.IRON_INGOT, null], [ItemId.IRON_INGOT, ItemId.STICK, null], [null, ItemId.STICK, null] ]},
+    { result: { id: ItemId.IRON_SHOVEL, count: 1 }, shape: [ [ItemId.IRON_INGOT], [ItemId.STICK], [ItemId.STICK] ]},
+    { result: { id: ItemId.IRON_SWORD, count: 1 }, shape: [ [ItemId.IRON_INGOT], [ItemId.IRON_INGOT], [ItemId.STICK] ]},
+    { result: { id: ItemId.IRON_HOE, count: 1 }, shape: [ [ItemId.IRON_INGOT, ItemId.IRON_INGOT, null], [null, ItemId.STICK, null], [null, ItemId.STICK, null] ]},
+
+    // --- TOOLS (DIAMOND) ---
+    { result: { id: ItemId.DIAMOND_PICKAXE, count: 1 }, shape: [ [ItemId.DIAMOND, ItemId.DIAMOND, ItemId.DIAMOND], [null, ItemId.STICK, null], [null, ItemId.STICK, null] ]},
+    { result: { id: ItemId.DIAMOND_AXE, count: 1 }, shape: [ [ItemId.DIAMOND, ItemId.DIAMOND, null], [ItemId.DIAMOND, ItemId.STICK, null], [null, ItemId.STICK, null] ]},
+    { result: { id: ItemId.DIAMOND_SHOVEL, count: 1 }, shape: [ [ItemId.DIAMOND], [ItemId.STICK], [ItemId.STICK] ]},
+    { result: { id: ItemId.DIAMOND_SWORD, count: 1 }, shape: [ [ItemId.DIAMOND], [ItemId.DIAMOND], [ItemId.STICK] ]},
+    { result: { id: ItemId.DIAMOND_HOE, count: 1 }, shape: [ [ItemId.DIAMOND, ItemId.DIAMOND, null], [null, ItemId.STICK, null], [null, ItemId.STICK, null] ]},
+
+    // --- ARMOR (LEATHER) ---
+    { result: { id: ItemId.LEATHER_HELMET, count: 1 }, shape: [ [ItemId.LEATHER, ItemId.LEATHER, ItemId.LEATHER], [ItemId.LEATHER, null, ItemId.LEATHER], [null, null, null] ]},
+    { result: { id: ItemId.LEATHER_CHESTPLATE, count: 1 }, shape: [ [ItemId.LEATHER, null, ItemId.LEATHER], [ItemId.LEATHER, ItemId.LEATHER, ItemId.LEATHER], [ItemId.LEATHER, ItemId.LEATHER, ItemId.LEATHER] ]},
+    { result: { id: ItemId.LEATHER_LEGGINGS, count: 1 }, shape: [ [ItemId.LEATHER, ItemId.LEATHER, ItemId.LEATHER], [ItemId.LEATHER, null, ItemId.LEATHER], [ItemId.LEATHER, null, ItemId.LEATHER] ]},
+    { result: { id: ItemId.LEATHER_BOOTS, count: 1 }, shape: [ [null, null, null], [ItemId.LEATHER, null, ItemId.LEATHER], [ItemId.LEATHER, null, ItemId.LEATHER] ]},
+
+    // --- ARMOR (IRON) ---
+    { result: { id: ItemId.IRON_HELMET, count: 1 }, shape: [ [ItemId.IRON_INGOT, ItemId.IRON_INGOT, ItemId.IRON_INGOT], [ItemId.IRON_INGOT, null, ItemId.IRON_INGOT], [null, null, null] ]},
+    { result: { id: ItemId.IRON_CHESTPLATE, count: 1 }, shape: [ [ItemId.IRON_INGOT, null, ItemId.IRON_INGOT], [ItemId.IRON_INGOT, ItemId.IRON_INGOT, ItemId.IRON_INGOT], [ItemId.IRON_INGOT, ItemId.IRON_INGOT, ItemId.IRON_INGOT] ]},
+    { result: { id: ItemId.IRON_LEGGINGS, count: 1 }, shape: [ [ItemId.IRON_INGOT, ItemId.IRON_INGOT, ItemId.IRON_INGOT], [ItemId.IRON_INGOT, null, ItemId.IRON_INGOT], [ItemId.IRON_INGOT, null, ItemId.IRON_INGOT] ]},
+    { result: { id: ItemId.IRON_BOOTS, count: 1 }, shape: [ [null, null, null], [ItemId.IRON_INGOT, null, ItemId.IRON_INGOT], [ItemId.IRON_INGOT, null, ItemId.IRON_INGOT] ]},
+
+    // --- ARMOR (DIAMOND) ---
+    { result: { id: ItemId.DIAMOND_HELMET, count: 1 }, shape: [ [ItemId.DIAMOND, ItemId.DIAMOND, ItemId.DIAMOND], [ItemId.DIAMOND, null, ItemId.DIAMOND], [null, null, null] ]},
+    { result: { id: ItemId.DIAMOND_CHESTPLATE, count: 1 }, shape: [ [ItemId.DIAMOND, null, ItemId.DIAMOND], [ItemId.DIAMOND, ItemId.DIAMOND, ItemId.DIAMOND], [ItemId.DIAMOND, ItemId.DIAMOND, ItemId.DIAMOND] ]},
+    { result: { id: ItemId.DIAMOND_LEGGINGS, count: 1 }, shape: [ [ItemId.DIAMOND, ItemId.DIAMOND, ItemId.DIAMOND], [ItemId.DIAMOND, null, ItemId.DIAMOND], [ItemId.DIAMOND, null, ItemId.DIAMOND] ]},
+    { result: { id: ItemId.DIAMOND_BOOTS, count: 1 }, shape: [ [null, null, null], [ItemId.DIAMOND, null, ItemId.DIAMOND], [ItemId.DIAMOND, null, ItemId.DIAMOND] ]},
 ];
 
 export class CraftingSystem {
-
-    public static getItemInfo(id: ItemId): ItemInfo | undefined {
-        return ITEM_INFO_MAP.get(id);
-    }
     
+    public findRecipeByResult(itemId: ItemId): Recipe | null {
+        return RECIPES.find(r => r.result.id === itemId) || null;
+    }
+
     public checkGrid(grid: (Item | null)[][]): Item | null {
         const gridHeight = grid.length;
+        if (gridHeight === 0) return null;
         const gridWidth = grid[0].length;
 
         for (const recipe of RECIPES) {
@@ -90,21 +111,27 @@ export class CraftingSystem {
     }
 
     private matchRecipe(grid: (Item | null)[][], recipe: Recipe): boolean {
-        const shape = recipe.shape;
-        const recipeHeight = shape.length;
-        const recipeWidth = shape[0].length;
         const gridHeight = grid.length;
         const gridWidth = grid[0].length;
 
         if (recipe.isShapeless) {
-            // Simplified shapeless logic for 1x1 recipes like logs -> planks
-            const itemsInGrid = grid.flat().filter(Boolean);
-            if (itemsInGrid.length === 1 && itemsInGrid[0]?.id === shape[0][0]) {
-                return true;
+            const recipeItems = recipe.shape.flat().filter(Boolean);
+            const gridItems = grid.flat().filter(Boolean).map(i => i!.id);
+            if (recipeItems.length !== gridItems.length) return false;
+            
+            const sortedRecipe = [...recipeItems].sort();
+            const sortedGrid = [...gridItems].sort();
+            
+            for(let i=0; i<sortedRecipe.length; i++) {
+                if(sortedRecipe[i] !== sortedGrid[i]) return false;
             }
-            return false;
+            return true;
         }
 
+        const shape = recipe.shape;
+        const recipeHeight = shape.length;
+        const recipeWidth = shape[0].length;
+        
         if (recipeHeight > gridHeight || recipeWidth > gridWidth) {
             return false;
         }
@@ -134,13 +161,31 @@ export class CraftingSystem {
         for (let y = 0; y < recipeHeight; y++) {
             for (let x = 0; x < recipeWidth; x++) {
                 const recipeItem = shape[y][x];
+                // Allow any plank type if recipe calls for OAK_PLANKS
                 const gridItem = grid[minY + y][minX + x];
+                const gridItemId = gridItem?.id || null;
 
-                if (recipeItem !== (gridItem?.id || null)) {
+                if (recipeItem === ItemId.OAK_PLANKS) {
+                    if (gridItemId !== ItemId.OAK_PLANKS && gridItemId !== ItemId.SPRUCE_PLANKS && gridItemId !== ItemId.BIRCH_PLANKS) {
+                        return false;
+                    }
+                } else if (recipeItem !== gridItemId) {
                     return false;
                 }
             }
         }
+
+        // Check that there are no other items outside the recipe shape
+        for (let y = 0; y < gridHeight; y++) {
+            for (let x = 0; x < gridWidth; x++) {
+                if (grid[y][x]) {
+                    if (y < minY || y > maxY || x < minX || x > maxX) {
+                        return false;
+                    }
+                }
+            }
+        }
+
 
         return true;
     }

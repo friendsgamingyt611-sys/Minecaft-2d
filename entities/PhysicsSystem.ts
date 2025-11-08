@@ -1,4 +1,3 @@
-
 import { Player } from './Player';
 import { ChunkSystem } from '../world/ChunkSystem';
 import { GRAVITY, PLAYER_FRICTION, BLOCK_SIZE, TERMINAL_VELOCITY } from '../core/Constants';
@@ -22,7 +21,7 @@ export class PhysicsSystem {
   }
 
   applyGravity(entity: PhysicsEntity): void {
-    if (entity instanceof Player && entity.isFlying) return;
+    if (entity instanceof Player && (entity.isFlying || entity.gamemode === 'spectator')) return;
     entity.velocity.y += GRAVITY;
     if (entity.velocity.y > TERMINAL_VELOCITY) {
         entity.velocity.y = TERMINAL_VELOCITY;
@@ -35,6 +34,11 @@ export class PhysicsSystem {
 
   updatePositionAndCollision(entity: Player | ItemEntity) {
       const isPlayer = entity instanceof Player;
+      if (isPlayer && (entity as Player).gamemode === 'spectator') {
+          entity.position.x += entity.velocity.x;
+          entity.position.y += entity.velocity.y;
+          return;
+      }
       
       entity.position.x += entity.velocity.x;
       this.resolveHorizontalCollisions(entity, isPlayer);

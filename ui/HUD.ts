@@ -1,13 +1,11 @@
-
-
 import { Player } from '../entities/Player';
 import { HOTBAR_SLOTS, HOTBAR_SLOT_SIZE, HOTBAR_ITEM_SIZE, MAX_HEALTH, MAX_HUNGER, BLOCK_SIZE } from '../core/Constants';
 import { BlockRenderer } from '../rendering/BlockRenderer';
 import { getBlockType } from '../world/BlockRegistry';
-import { CraftingSystem } from '../crafting/CraftingSystem';
 import { TouchControlsUI } from './TouchControlsUI';
 import { SettingsManager } from '../core/SettingsManager';
 import { TouchHandler } from '../input/TouchHandler';
+import { ItemRegistry } from '../inventory/ItemRegistry';
 
 export class HUD {
   private player: Player;
@@ -22,6 +20,14 @@ export class HUD {
 
   private pauseButtonRect: { x: number, y: number, w: number, h: number };
   private autoSaveIndicatorTimer: number = 0;
+  public showDebugOverlay: boolean = false;
+
+  // Hotbar selection animation state
+  private lastSelectedSlot: number = -1;
+  private selectionChangeTime: number = 0;
+  
+  // Notification
+  private notification: { text: string, timer: number } | null = null;
 
 
   constructor(player: Player, touchControlsUI: TouchControlsUI, touchHandler: TouchHandler, togglePause: () => void) {
@@ -40,13 +46,29 @@ export class HUD {
       return SettingsManager.instance.settings.graphics.guiScale;
   }
   
+  public showNotification(text: string, duration: number = 3) {
+      this.notification = { text, timer: duration * 60 };
+  }
+  
   public displaySaveIndicator(): void {
       this.autoSaveIndicatorTimer = 180; // 3 seconds at 60fps
+  }
+
+  public toggleDebugOverlay(): void {
+    this.showDebugOverlay = !this.showDebugOverlay;
   }
   
   public update(deltaTime: number): void {
       if (this.autoSaveIndicatorTimer > 0) {
           this.autoSaveIndicatorTimer -= 60 * deltaTime;
+      }
+      if (this.notification && this.notification.timer > 0) {
+          this.notification.timer -= 60 * deltaTime;
+          if (this.notification.timer <= 0) this.notification = null;
+      }
+      if (this.player.activeHotbarSlot !== this.lastSelectedSlot) {
+        this.lastSelectedSlot = this.player.activeHotbarSlot;
+        this.selectionChangeTime = Date.now();
       }
   }
 
@@ -58,9 +80,12 @@ export class HUD {
     this.lastFrameTimes.push(now);
     this.fps = this.lastFrameTimes.length;
     
-    this.renderHealthBar(ctx);
-    this.renderHungerBar(ctx);
-    this.renderXpBar(ctx);
+    if (this.player.gamemode === 'survival') {
+        this.renderHealthBar(ctx);
+        this.renderHungerBar(ctx);
+        this.renderXpBar(ctx);
+    }
+    
     this.renderHotbar(ctx);
     
     if (SettingsManager.instance.getEffectiveControlScheme() === 'touch') {
@@ -70,6 +95,25 @@ export class HUD {
 
     this.renderDebugInfo(ctx);
     this.renderAutoSaveIndicator(ctx);
+    this.renderNotification(ctx);
+  }
+  
+  private renderNotification(ctx: CanvasRenderingContext2D) {
+      if (!this.notification) return;
+
+      const alpha = Math.min(1, this.notification.timer / 30); // Fade out in last 0.5s
+      ctx.font = `${24 * this.guiScale}px Minecraftia`;
+      ctx.textAlign = 'center';
+
+      const text = this.notification.text;
+      const textMetrics = ctx.measureText(text);
+      const x = ctx.canvas.width / 2;
+      const y = 30 * this.guiScale;
+
+      ctx.fillStyle = `rgba(0,0,0,${0.5 * alpha})`;
+      ctx.fillText(text, x + 1, y + 1);
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+      ctx.fillText(text, x, y);
   }
 
   public getHotbarSlotRect(slotIndex: number): { x: number, y: number, w: number, h: number } {
@@ -121,15 +165,16 @@ export class HUD {
 
   private renderDebugInfo(ctx: CanvasRenderingContext2D) {
     const { gameplay } = SettingsManager.instance.settings;
-    if (!gameplay.showFps && !gameplay.showCoordinates && !gameplay.showBiome) return;
+    if (!this.showDebugOverlay && !gameplay.showFps && !gameplay.showCoordinates && !gameplay.showBiome) return;
 
     ctx.font = `${18 * this.guiScale}px Minecraftia`;
     ctx.fillStyle = "rgba(0,0,0,0.5)";
     
     let infoLines = 0;
-    if (gameplay.showFps) infoLines++;
-    if (gameplay.showCoordinates) infoLines++;
-    if (gameplay.showBiome) infoLines++;
+    if (this.showDebugOverlay || gameplay.showFps) infoLines++;
+    if (this.showDebugOverlay || gameplay.showCoordinates) infoLines++;
+    if (this.showDebugOverlay || gameplay.showBiome) infoLines++;
+    if (this.showDebugOverlay) infoLines++; // For gamemode
     
     ctx.fillRect(5, 5, 250 * this.guiScale, 5 + infoLines * (20 * this.guiScale));
     
@@ -139,19 +184,23 @@ export class HUD {
     let yOffset = 25 * this.guiScale;
     const xOffset = 10 * this.guiScale;
 
-    if (gameplay.showFps) {
+    if (this.showDebugOverlay || gameplay.showFps) {
       ctx.fillText(`FPS: ${this.fps}`, xOffset, yOffset);
       yOffset += 20 * this.guiScale;
     }
-    if (gameplay.showCoordinates) {
+    if (this.showDebugOverlay || gameplay.showCoordinates) {
       const x = (this.player.position.x / BLOCK_SIZE).toFixed(2);
       const y = (this.player.position.y / BLOCK_SIZE).toFixed(2);
       ctx.fillText(`X: ${x} Y: ${y}`, xOffset, yOffset);
       yOffset += 20 * this.guiScale;
     }
-    if (gameplay.showBiome) {
+    if (this.showDebugOverlay || gameplay.showBiome) {
       const biome = this.player.world.generator.getBiome(Math.floor(this.player.position.x / BLOCK_SIZE));
       ctx.fillText(`Biome: ${biome.name}`, xOffset, yOffset);
+      yOffset += 20 * this.guiScale;
+    }
+    if (this.showDebugOverlay) {
+        ctx.fillText(`Mode: ${this.player.gamemode}`, xOffset, yOffset);
     }
   }
 
@@ -159,14 +208,26 @@ export class HUD {
     const scaledItemSize = HOTBAR_ITEM_SIZE * this.guiScale;
     for (let i = 0; i < HOTBAR_SLOTS; i++) {
       const rect = this.getHotbarSlotRect(i);
+      const isSelected = this.player.activeHotbarSlot === i;
       
+      ctx.save();
+      
+      if (isSelected) {
+          const elapsed = Date.now() - this.selectionChangeTime;
+          const animProgress = Math.min(1, elapsed / 150); // 150ms animation
+          const scale = 1 + Math.sin(animProgress * Math.PI) * 0.08;
+          ctx.translate(rect.x + rect.w / 2, rect.y + rect.h / 2);
+          ctx.scale(scale, scale);
+          ctx.translate(-(rect.x + rect.w / 2), -(rect.y + rect.h / 2));
+      }
+
       ctx.globalAlpha = 0.5;
       ctx.fillStyle = '#000000';
       ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
       ctx.globalAlpha = 1.0;
 
-      ctx.strokeStyle = this.player.activeHotbarSlot === i ? '#ffffff' : '#888888';
-      ctx.lineWidth = 3 * this.guiScale;
+      ctx.strokeStyle = isSelected ? '#ffffff' : '#888888';
+      ctx.lineWidth = isSelected ? 6 * this.guiScale : 3 * this.guiScale;
       ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
 
       const item = this.player.inventory.getItem(i);
@@ -174,7 +235,7 @@ export class HUD {
         const itemX = rect.x + (rect.w - scaledItemSize) / 2;
         const itemY = rect.y + (rect.h - scaledItemSize) / 2;
         
-        const itemInfo = CraftingSystem.getItemInfo(item.id);
+        const itemInfo = ItemRegistry.getItemInfo(item.id);
         const blockId = itemInfo?.blockId;
 
         if (blockId) {
@@ -205,6 +266,7 @@ export class HUD {
             ctx.textBaseline = 'alphabetic';
         }
       }
+      ctx.restore();
     }
   }
 

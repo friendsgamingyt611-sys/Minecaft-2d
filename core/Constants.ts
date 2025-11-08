@@ -26,6 +26,11 @@ export const HOTBAR_SLOTS = 9;
 export const INVENTORY_SLOTS = 36; // 9 hotbar + 27 main
 export const ARMOR_SLOTS = 4;
 export const CHEST_SLOTS = 27;
+export const CRAFTING_GRID_SLOTS = 9;
+export const FURNACE_INPUT_SLOT = 0;
+export const FURNACE_FUEL_SLOT = 1;
+export const FURNACE_OUTPUT_SLOT = 2;
+
 
 export const HOTBAR_SLOT_SIZE = 64;
 export const HOTBAR_ITEM_SIZE = 48;
@@ -44,7 +49,6 @@ export const FALL_DAMAGE_START_BLOCKS = 4;
 export const TERMINAL_VELOCITY = 30;
 
 // V2.5 Tool Constants
-export const TOOL_EFFECTIVENESS_MULTIPLIER = 7.5;
 export const TOOL_TIER_SPEED_MAP = {
     wood: 2,
     stone: 4,

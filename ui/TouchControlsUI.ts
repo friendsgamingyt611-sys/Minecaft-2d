@@ -1,5 +1,3 @@
-
-
 import { TOUCH_JOYSTICK_KNOB_RADIUS, TOUCH_JOYSTICK_RADIUS, TOUCH_JOYSTICK_STROKE_WIDTH } from '../core/Constants';
 import { Player } from '../entities/Player';
 import { SettingsManager } from '../core/SettingsManager';
@@ -20,7 +18,6 @@ export class TouchControlsUI {
     private renderJoystick(ctx: CanvasRenderingContext2D) {
         if (!this.touchHandler.isJoystickActive()) return;
 
-        // FIX: Access setting from the correct 'controls' sub-object.
         const opacity = SettingsManager.instance.settings.controls.touchButtonOpacity;
 
         // Draw joystick base
@@ -41,7 +38,6 @@ export class TouchControlsUI {
         const { controls } = SettingsManager.instance.settings;
 
         this.touchHandler.getButtons().forEach(button => {
-            // FIX: Access setting from the correct 'controls' sub-object.
             const opacity = button.isPressed ? controls.touchButtonOpacity * 1.5 : controls.touchButtonOpacity;
             ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
             ctx.strokeStyle = `rgba(0, 0, 0, ${opacity})`;
@@ -63,9 +59,7 @@ export class TouchControlsUI {
         const size = w * 0.4;
         const { controls } = SettingsManager.instance.settings;
         
-        // FIX: Access setting from the correct 'controls' sub-object.
         ctx.fillStyle = `rgba(0, 0, 0, ${controls.touchButtonOpacity * 1.2})`;
-        // FIX: Access setting from the correct 'controls' sub-object.
         ctx.strokeStyle = `rgba(0, 0, 0, ${controls.touchButtonOpacity * 1.2})`;
         ctx.lineWidth = Math.max(4, w * 0.1);
         ctx.lineCap = 'round';
@@ -81,14 +75,23 @@ export class TouchControlsUI {
                 ctx.stroke();
                 break;
             case 'sneak':
+                ctx.strokeRect(cx - size / 2, cy - size / 2, size, size);
+                break;
+            case 'swapHands':
                 ctx.moveTo(cx - size, cy - size/2);
-                ctx.lineTo(cx, cy + size/2);
                 ctx.lineTo(cx + size, cy - size/2);
+                ctx.moveTo(cx + size*0.6, cy - size);
+                ctx.lineTo(cx + size, cy - size/2);
+                ctx.lineTo(cx + size*0.6, cy);
+
+                ctx.moveTo(cx + size, cy + size/2);
+                ctx.lineTo(cx - size, cy + size/2);
+                ctx.moveTo(cx - size*0.6, cy);
+                ctx.lineTo(cx - size, cy + size/2);
+                ctx.lineTo(cx - size*0.6, cy + size);
                 ctx.stroke();
                 break;
             case 'action':
-                // TODO: Change icon based on player.targetBlock
-                // For now, default to pickaxe
                 ctx.lineWidth = Math.max(5, w * 0.12);
                 // Handle
                 ctx.moveTo(cx + size * 0.8, cy - size * 0.8);

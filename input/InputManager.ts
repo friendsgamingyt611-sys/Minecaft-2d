@@ -1,9 +1,13 @@
-
 export class InputManager {
   private keys: Map<string, boolean> = new Map();
+  private prevKeys: Map<string, boolean> = new Map();
 
   constructor() {
     this.addEventListeners();
+  }
+  
+  public lateUpdate(): void {
+    this.prevKeys = new Map(this.keys);
   }
 
   private addEventListeners() {
@@ -29,10 +33,14 @@ export class InputManager {
   }
   
   isKeyPressed(key: string): boolean {
-    if (this.isKeyDown(key)) {
-        this.keys.set(key.toLowerCase(), false); // Consume the press
-        return true;
-    }
-    return false;
+    const isDown = this.isKeyDown(key);
+    const wasDown = this.prevKeys.get(key.toLowerCase()) || false;
+    return isDown && !wasDown;
+  }
+  
+  isKeyReleased(key: string): boolean {
+    const isDown = this.isKeyDown(key);
+    const wasDown = this.prevKeys.get(key.toLowerCase()) || false;
+    return !isDown && wasDown;
   }
 }

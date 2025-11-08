@@ -6,8 +6,10 @@ export class MouseHandler {
   public position: Vector2 = { x: 0, y: 0 };
   public isLeftDown: boolean = false;
   public isRightDown: boolean = false;
+  public isMiddleDown: boolean = false;
   public isLeftClicked: boolean = false;
   public isRightClicked: boolean = false;
+  public isMiddleClicked: boolean = false;
   public isLeftUp: boolean = false;
   public scrollDelta: number = 0;
   
@@ -37,6 +39,7 @@ export class MouseHandler {
   public lateUpdate() {
       this.isLeftClicked = false;
       this.isRightClicked = false;
+      this.isMiddleClicked = false;
       this.isLeftUp = false;
       this.scrollDelta = 0;
   }
@@ -53,6 +56,9 @@ export class MouseHandler {
     if (event.button === 0) {
       this.isLeftDown = true;
       this.isLeftClicked = true;
+    } else if (event.button === 1) {
+      this.isMiddleDown = true;
+      this.isMiddleClicked = true;
     } else if (event.button === 2) {
       this.isRightDown = true;
       this.isRightClicked = true;
@@ -63,6 +69,8 @@ export class MouseHandler {
     if (event.button === 0) {
       this.isLeftDown = false;
       this.isLeftUp = true;
+    } else if (event.button === 1) {
+      this.isMiddleDown = false;
     } else if (event.button === 2) {
       this.isRightDown = false;
     }
