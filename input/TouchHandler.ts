@@ -38,6 +38,8 @@ export class TouchHandler {
     public joystickCenter: Vector2 = { x: 0, y: 0 };
     public joystickKnob: Vector2 = { x: 0, y: 0 };
     private joystickVector: Vector2 = { x: 0, y: 0 };
+    // FIX: Add isSprinting property to be managed by the TouchHandler.
+    public isSprinting: boolean = false;
 
     private buttons: Map<TouchButtonType, TouchButton> = new Map();
     private buttonTouchIds: Map<number, TouchButtonType> = new Map();
@@ -68,26 +70,32 @@ export class TouchHandler {
         };
 
         const hotbarSlotsWidth = HOTBAR_SLOTS * HOTBAR_SLOT_SIZE * guiScale;
+        const hotbarSlotSize = HOTBAR_SLOT_SIZE * guiScale;
         const hotbarStartX = (width - hotbarSlotsWidth) / 2;
-        const hotbarY = height - (HOTBAR_SLOT_SIZE * guiScale) - (20 * guiScale);
+        const hotbarY = height - hotbarSlotSize - (20 * guiScale);
+        const invButtonX = hotbarStartX + hotbarSlotsWidth + margin / 2;
 
-        const buttonDefs: { id: TouchButtonType, pos: Vector2 }[] = [
+        const buttonDefs: { id: TouchButtonType, pos: Vector2, customSize?: Vector2 }[] = [
             // Right-side main buttons
             { id: 'jump', pos: { x: width - size - margin, y: height - size - margin } },
             { id: 'sneak', pos: { x: width - size * 2 - margin * 2, y: height - size - margin } },
             { id: 'action', pos: { x: width - size - margin, y: height - size * 2 - margin * 2 } },
             { id: 'swapHands', pos: { x: width - size * 2 - margin * 2, y: height - size * 2 - margin * 2 } },
             
+            // Inventory button next to hotbar
+            { id: 'inventory', pos: { x: invButtonX, y: hotbarY }, customSize: { x: hotbarSlotSize, y: hotbarSlotSize } },
+
             // Left-side buttons
-            { id: 'inventory', pos: { x: margin, y: hotbarY } },
             { id: 'sprint', pos: { x: this.joystickActivationZone.w + margin, y: height - size - margin } }
         ];
 
         this.buttons.clear();
         buttonDefs.forEach(def => {
+            const buttonSizeW = def.customSize ? def.customSize.x : size;
+            const buttonSizeH = def.customSize ? def.customSize.y : size;
             this.buttons.set(def.id, {
                 id: def.id,
-                rect: { x: def.pos.x, y: def.pos.y, w: size, h: size },
+                rect: { x: def.pos.x, y: def.pos.y, w: buttonSizeW, h: buttonSizeH },
                 isPressed: false,
                 justPressed: false
             });
@@ -260,6 +268,9 @@ export class TouchHandler {
                 const dy = pos.y - this.joystickCenter.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
     
+                // FIX: Add sprinting logic. Sprinting is active when the joystick is pushed to its maximum range.
+                this.isSprinting = distance > TOUCH_JOYSTICK_RADIUS;
+
                 if (distance > TOUCH_JOYSTICK_RADIUS) {
                     this.joystickKnob.x = this.joystickCenter.x + (dx / distance) * TOUCH_JOYSTICK_RADIUS;
                     this.joystickKnob.y = this.joystickCenter.y + (dy / distance) * TOUCH_JOYSTICK_RADIUS;
@@ -311,6 +322,8 @@ export class TouchHandler {
                 this.joystickTouchId = null;
                 this.joystickVector.x = 0;
                 this.joystickVector.y = 0;
+                // FIX: Reset sprinting state when joystick is released.
+                this.isSprinting = false;
             }
 
             const buttonId = this.buttonTouchIds.get(touch.identifier);

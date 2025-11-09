@@ -1,4 +1,3 @@
-
 import { Item, ItemId, Recipe } from '../types';
 
 const RECIPES: Recipe[] = [
@@ -93,6 +92,10 @@ const RECIPES: Recipe[] = [
 
 export class CraftingSystem {
     
+    public getAllRecipes(): Recipe[] {
+        return RECIPES;
+    }
+
     public findRecipeByResult(itemId: ItemId): Recipe | null {
         return RECIPES.find(r => r.result.id === itemId) || null;
     }

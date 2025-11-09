@@ -9,13 +9,13 @@ export const GRAVITY = 1.5;
 // FIX: Reduced jump force. A force of 11 results in a jump height of ~1.6 blocks,
 // enough to clear one block but not two. The previous value of 18 was enough for ~4 blocks.
 export const PLAYER_JUMP_FORCE = 16;
-export const PLAYER_MOVE_SPEED = 8.6; // From 4.8
-export const PLAYER_SPRINT_SPEED = 12.4;
-export const PLAYER_SNEAK_SPEED = 3.2;
+export const PLAYER_MOVE_SPEED = 8.6; // Max walk speed
+export const PLAYER_SPRINT_SPEED = 12.4; // Max sprint speed
+export const PLAYER_SNEAK_SPEED = 3.2; // Max sneak speed
 export const PLAYER_STEP_UP_FORCE = 10; // New: For smooth block stepping
 
-export const PLAYER_MAX_SPEED = 10;
-export const PLAYER_FRICTION = 0.85;
+export const PLAYER_ACCELERATION = 1.8;
+export const PLAYER_FRICTION = 0.88;
 
 // V2.1 Player Model Dimensions
 export const PLAYER_WIDTH = BLOCK_SIZE * 0.75;

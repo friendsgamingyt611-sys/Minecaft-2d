@@ -105,6 +105,24 @@ export class HUD {
     this.renderDebugInfo(ctx);
     this.renderAutoSaveIndicator(ctx);
     this.renderNotification(ctx);
+    this.renderStatusIcons(ctx);
+  }
+
+  private renderStatusIcons(ctx: CanvasRenderingContext2D) {
+      let iconCount = 0;
+      if (this.player.isSprinting) {
+          const iconX = this.canvas.width / 2 + 100 + (iconCount * 30 * this.guiScale);
+          const iconY = 15;
+          this.drawSprintIcon(ctx, iconX, iconY, 24 * this.guiScale);
+          iconCount++;
+      }
+  }
+  
+  private drawSprintIcon(ctx: CanvasRenderingContext2D, x:number, y:number, size:number) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.font = `${size}px Minecraftia`;
+      ctx.textAlign = 'left';
+      ctx.fillText(">>", x, y + size * 0.8);
   }
   
   private renderNotification(ctx: CanvasRenderingContext2D) {

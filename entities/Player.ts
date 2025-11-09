@@ -6,7 +6,7 @@ import {
     PARTICLE_COUNT, PARTICLE_LIFESPAN, MAX_HEALTH, MAX_HUNGER, FALL_DAMAGE_START_BLOCKS,
     PLAYER_SPRINT_SPEED, PLAYER_SNEAK_SPEED, PLAYER_SNEAK_HEIGHT,
     INCORRECT_TOOL_PENALTY, INVENTORY_SLOTS,
-    ITEM_PICKUP_RADIUS, TOOL_TIER_SPEED_MAP, ARMOR_SLOTS
+    ITEM_PICKUP_RADIUS, TOOL_TIER_SPEED_MAP, ARMOR_SLOTS, PLAYER_ACCELERATION
 } from '../core/Constants';
 import { PhysicsSystem } from './PhysicsSystem';
 import { getBlockType } from '../world/BlockRegistry';
@@ -374,14 +374,22 @@ export class Player extends LivingEntity {
   }
 
   private handleInput(inputState: InputState): void {
-    const speed = this.isSneaking ? PLAYER_SNEAK_SPEED : (this.isSprinting ? PLAYER_SPRINT_SPEED : PLAYER_MOVE_SPEED);
+    const maxSpeed = this.isSneaking ? PLAYER_SNEAK_SPEED : (this.isSprinting ? PLAYER_SPRINT_SPEED : PLAYER_MOVE_SPEED);
+    
     if (this.isFlying) {
-      this.velocity.x = inputState.moveX * speed;
+      // Flying uses direct velocity for responsiveness
+      this.velocity.x = inputState.moveX * maxSpeed;
       this.velocity.y = 0;
-      if (inputState.jump.pressed) this.velocity.y = -speed;
-      if (inputState.sneak.pressed) this.velocity.y = speed;
+      if (inputState.jump.pressed) this.velocity.y = -maxSpeed;
+      if (inputState.sneak.pressed) this.velocity.y = maxSpeed;
     } else {
-      this.velocity.x = inputState.moveX * speed;
+      // Ground movement uses acceleration
+      if (inputState.moveX !== 0) {
+          this.velocity.x += inputState.moveX * PLAYER_ACCELERATION;
+          // Cap velocity at max speed
+          this.velocity.x = Math.max(-maxSpeed, Math.min(maxSpeed, this.velocity.x));
+      }
+      // Friction is applied in PhysicsSystem to slow down
     }
 
     if (inputState.moveX !== 0) this.facingDirection = Math.sign(inputState.moveX);
@@ -811,7 +819,7 @@ export class Player extends LivingEntity {
       this.animationState = this.velocity.y < 0 ? 'jumping' : 'falling';
     } else if (this.isSneaking) {
       this.animationState = 'sneaking';
-    } else if (inputState.moveX !== 0) {
+    } else if (Math.abs(this.velocity.x) > 0.1) {
       this.animationState = this.isSprinting ? 'sprinting' : 'walking';
     } else {
       this.animationState = 'idle';

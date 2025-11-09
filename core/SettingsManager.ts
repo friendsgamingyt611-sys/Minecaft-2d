@@ -50,7 +50,7 @@ export class SettingsManager {
                 toggleCrouch: false,
                 toggleSprint: false,
                 keyBindings: {}, // Future use
-                touchButtonSize: 1.0,
+                touchButtonSize: 0.85,
                 touchButtonOpacity: 0.7,
             },
             gameplay: {

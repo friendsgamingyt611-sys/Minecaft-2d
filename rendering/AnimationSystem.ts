@@ -1,4 +1,3 @@
-
 import { Player } from '../entities/Player';
 import { BodyPart, PlayerPose, Vector2 } from '../types';
 import { BLOCK_SIZE, PLAYER_HEIGHT } from '../core/Constants';
@@ -110,11 +109,12 @@ export class AnimationSystem {
     private createIdlePose(player: Player): PlayerPose {
         const pose = this.createDefaultPose(player);
         const breath = Math.sin(this.animationTimer * 2) * 0.02;
+        const armSway = Math.sin(this.animationTimer * 0.8) * 0.05;
         pose.torso.y -= breath * BLOCK_SIZE * 0.2;
         pose.head.y -= breath * BLOCK_SIZE * 0.4;
         const torso = pose.torso;
-        this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, 0);
-        this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, 0);
+        this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, armSway);
+        this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, armSway);
         this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, 0);
         this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, 0);
         return pose;
@@ -122,57 +122,54 @@ export class AnimationSystem {
     
     private createWalkingPose(player: Player): PlayerPose {
         const pose = this.createDefaultPose(player);
-        const swingAngle = Math.sin(this.animationTimer * 10) * (player.isSprinting ? 0.8 : 0.6);
+        const swingAngle = Math.sin(this.animationTimer * 10) * (player.isSprinting ? 0.9 : 0.6);
         
         const { viewBobbing, viewBobbingIntensity } = SettingsManager.instance.settings.graphics;
         const { reducedMotion } = SettingsManager.instance.settings.accessibility;
         let bob = 0;
         if (viewBobbing && !reducedMotion) {
-            bob = Math.abs(Math.sin(this.animationTimer * 10)) * 0.05 * BLOCK_SIZE * (viewBobbingIntensity / 100);
+            bob = Math.abs(Math.sin(this.animationTimer * 10)) * (player.isSprinting ? 0.12 : 0.08) * BLOCK_SIZE * (viewBobbingIntensity / 100);
         }
 
         pose.torso.y -= bob;
         pose.head.y -= bob;
-        pose.torso.rotation = player.isSprinting ? 0.2 : 0.1;
+        pose.torso.rotation = player.isSprinting ? 0.25 : 0.15;
         const torso = pose.torso;
         
-        // Apply limb rotation for walking motion (contralateral)
-        this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, -swingAngle);
-        this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, swingAngle);
-        this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, swingAngle);
-        this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, -swingAngle);
+        const rightArmAngle = -swingAngle;
+        const leftArmAngle = swingAngle;
+        const rightLegAngle = swingAngle;
+        const leftLegAngle = -swingAngle;
 
-        // FIX: Replaced complex z-index logic with a clearer, more robust implementation
-        // to fix "moonwalking" and incorrect leg layering.
-        const isFacingRight = player.facingDirection === 1;
-        // A positive swingAngle corresponds to the right leg and left arm moving forward.
-        const rightLegForward = swingAngle > 0;
+        this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, rightArmAngle);
+        this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, leftArmAngle);
+        this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, rightLegAngle);
+        this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, leftLegAngle);
 
-        if (isFacingRight) {
-            // Default: right limbs are near (z=2), left are far (z=0).
-            pose.rightArm.z = 2; pose.leftArm.z = 0;
-            pose.rightLeg.z = 2; pose.leftLeg.z = 0;
+        // Z-index layering: Higher z is in front. Torso is at z=1.
+        let nearArm, farArm, nearLeg, farLeg;
+        let nearArmAngle, farArmAngle, nearLegAngle, farLegAngle;
 
-            if (rightLegForward) { // right leg (near) & left arm (far) are forward
-                // Far arm crosses over near arm.
-                [pose.leftArm.z, pose.rightArm.z] = [pose.rightArm.z, pose.leftArm.z];
-            } else { // left leg (far) & right arm (near) are forward
-                // Far leg crosses over near leg.
-                [pose.leftLeg.z, pose.rightLeg.z] = [pose.rightLeg.z, pose.leftLeg.z];
-            }
+        if (player.facingDirection === 1) { // Facing right
+            [nearArm, farArm] = [pose.rightArm, pose.leftArm];
+            [nearLeg, farLeg] = [pose.rightLeg, pose.leftLeg];
+            [nearArmAngle, farArmAngle] = [rightArmAngle, leftArmAngle];
+            [nearLegAngle, farLegAngle] = [rightLegAngle, leftLegAngle];
         } else { // Facing left
-            // Default: left limbs are near (z=2), right limbs are far (0).
-            pose.rightArm.z = 0; pose.leftArm.z = 2;
-            pose.rightLeg.z = 0; pose.leftLeg.z = 2;
-
-            if (rightLegForward) { // right leg (far) & left arm (near) are forward
-                // Far leg crosses over near leg.
-                [pose.leftLeg.z, pose.rightLeg.z] = [pose.rightLeg.z, pose.leftLeg.z];
-            } else { // left leg (near) & right arm (far) are forward
-                // Far arm crosses over near arm.
-                [pose.leftArm.z, pose.rightArm.z] = [pose.rightArm.z, pose.leftArm.z];
-            }
+            [nearArm, farArm] = [pose.leftArm, pose.rightArm];
+            [nearLeg, farLeg] = [pose.leftLeg, pose.rightLeg];
+            [nearArmAngle, farArmAngle] = [leftArmAngle, rightArmAngle];
+            [nearLegAngle, farLegAngle] = [leftLegAngle, rightLegAngle];
         }
+
+        nearArm.z = 2; farArm.z = 0;
+        nearLeg.z = 2; farLeg.z = 0;
+        
+        // If the far arm is swinging forward (angle decreases), bring it in front.
+        if (farArmAngle < -0.1) farArm.z = 3;
+        
+        // If the far leg is swinging forward (angle increases), bring it in front.
+        if (farLegAngle > 0.1) farLeg.z = 3;
         
         return pose;
     }
@@ -180,20 +177,24 @@ export class AnimationSystem {
     private createJumpingPose(player: Player): PlayerPose {
         const pose = this.createDefaultPose(player);
         const torso = pose.torso;
-        this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, -0.4);
-        this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, -0.4);
-        this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, 0.2);
-        this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, 0.2);
+        const tuck = 0.4;
+        this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, -0.2);
+        this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, 0.2);
+        this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, tuck);
+        this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, tuck);
+        pose.rightLeg.y -= 5;
+        pose.leftLeg.y -= 5;
         return pose;
     }
 
     private createFallingPose(player: Player): PlayerPose {
         const pose = this.createDefaultPose(player);
+        const fallSway = Math.sin(this.animationTimer * 3) * 0.1;
         const torso = pose.torso;
-        this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, -0.2);
+        this.positionLimb(pose.rightArm, torso, { x: torso.width / 2, y: -torso.height / 2 }, 0.2);
         this.positionLimb(pose.leftArm, torso, { x: -torso.width / 2, y: -torso.height / 2 }, -0.2);
-        this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, 0.1);
-        this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, 0.1);
+        this.positionLimb(pose.rightLeg, torso, { x: torso.width / 4, y: torso.height / 2 }, 0.1 + fallSway);
+        this.positionLimb(pose.leftLeg, torso, { x: -torso.width / 4, y: torso.height / 2 }, 0.1 - fallSway);
         return pose;
     }
 

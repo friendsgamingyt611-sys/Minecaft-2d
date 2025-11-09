@@ -1,3 +1,4 @@
+
 import { SettingsManager } from '../core/SettingsManager';
 import { GlobalSettings, GraphicsSettings, AudioSettings, ControlsSettings, GameplaySettings, AccessibilitySettings, Vector2 } from '../types';
 import { Scene, SceneManager } from './SceneManager';
@@ -142,12 +143,10 @@ export class SettingsScene implements Scene {
         const mousePos = this.sceneManager.mouseHandler.position;
         const currentComponents = this.uiComponents.filter(c => c.category === this.activeCategory || c.type === 'button');
         
+        // --- Hover & Tooltip Logic (Mouse Only) ---
         this.tooltipTarget = null;
         this.hoveredComponent = null;
-
-        if (this.draggingComponent) {
-            this.updateSlider(this.draggingComponent, mousePos);
-        } else {
+        if (!this.draggingComponent && SettingsManager.instance.getEffectiveControlScheme() === 'keyboard') {
             for (const comp of [...currentComponents, ...this.categoryButtons]) {
                 if (this.isPosInRect(mousePos, comp.rect)) {
                     this.hoveredComponent = comp;
@@ -157,37 +156,69 @@ export class SettingsScene implements Scene {
             }
         }
 
-        if (this.sceneManager.mouseHandler.isLeftClicked) {
-            if (this.hoveredComponent) {
-                if (this.hoveredComponent.type === 'slider') {
-                    this.draggingComponent = this.hoveredComponent;
-                    this.updateSlider(this.draggingComponent, mousePos);
-                } else if ('label' in this.hoveredComponent && this.categoryButtons.includes(this.hoveredComponent)) {
-                    this.activeCategory = this.hoveredComponent.label;
-                    SoundManager.instance.playSound('ui.click');
-                } else if (this.hoveredComponent.type === 'toggle') {
-                    this.setComponentValue(this.hoveredComponent, !this.getComponentValue(this.hoveredComponent));
-                    SoundManager.instance.playSound('ui.click');
-                } else if (this.hoveredComponent.type === 'dropdown') {
-                    const current = this.getComponentValue(this.hoveredComponent);
-                    const currentIndex = this.hoveredComponent.options.indexOf(current);
-                    const nextIndex = (currentIndex + 1) % this.hoveredComponent.options.length;
-                    this.setComponentValue(this.hoveredComponent, this.hoveredComponent.options[nextIndex]);
-                    SoundManager.instance.playSound('ui.click');
-                } else if (this.hoveredComponent.onClick) {
-                    this.hoveredComponent.onClick();
-                }
-            }
+        // --- Slider Drag Logic (Mouse) ---
+        if (this.draggingComponent && this.sceneManager.mouseHandler.isLeftDown) {
+            this.updateSlider(this.draggingComponent, mousePos);
+        } else if (this.sceneManager.mouseHandler.isLeftUp) {
+            this.draggingComponent = null;
         }
         
-        if (this.sceneManager.mouseHandler.isLeftUp) {
-            this.draggingComponent = null;
+        // --- Click/Tap Interaction Logic ---
+        const interactionPoints: Vector2[] = [...this.sceneManager.touchHandler.justEndedTouches];
+        if (this.sceneManager.mouseHandler.isLeftClicked) {
+            interactionPoints.push(this.sceneManager.mouseHandler.position);
+        }
+
+        if (interactionPoints.length > 0) {
+            const pos = interactionPoints[0]; // Process one interaction per frame to avoid multi-taps
+            let interacted = false;
+
+            // Check category buttons
+            for (const cat of this.categoryButtons) {
+                if (this.isPosInRect(pos, cat.rect)) {
+                    this.activeCategory = cat.label;
+                    SoundManager.instance.playSound('ui.click');
+                    interacted = true;
+                    break;
+                }
+            }
+
+            if (interacted) return; // Don't process other components if a category was clicked
+
+            // Check UI components in the active category
+            for (const comp of currentComponents) {
+                if (this.isPosInRect(pos, comp.rect)) {
+                    if (comp.type === 'slider') {
+                        // For mouse, this starts a drag. For touch, it just sets the value.
+                        if (SettingsManager.instance.getEffectiveControlScheme() === 'keyboard') {
+                            this.draggingComponent = comp;
+                        }
+                        this.updateSlider(comp, pos);
+                    } else if (comp.type === 'toggle') {
+                        this.setComponentValue(comp, !this.getComponentValue(comp));
+                        SoundManager.instance.playSound('ui.click');
+                    } else if (comp.type === 'dropdown') {
+                        const current = this.getComponentValue(comp);
+                        const currentIndex = comp.options!.indexOf(current);
+                        const nextIndex = (currentIndex + 1) % comp.options!.length;
+                        this.setComponentValue(comp, comp.options![nextIndex]);
+                        SoundManager.instance.playSound('ui.click');
+                    } else if (comp.onClick) {
+                        comp.onClick();
+                    }
+                    interacted = true;
+                    break;
+                }
+            }
         }
     }
 
     private updateSlider(comp: UIComponent, pos: Vector2) {
-        const relativeX = Math.max(0, Math.min(comp.rect.w, pos.x - comp.rect.x));
-        const percentage = relativeX / comp.rect.w;
+        const barW = comp.rect.w * 0.4;
+        const barX = comp.rect.x + comp.rect.w - barW;
+        
+        const relativeX = Math.max(0, Math.min(barW, pos.x - barX));
+        const percentage = relativeX / barW;
         let value = comp.min! + (comp.max! - comp.min!) * percentage;
         value = Math.round(value / comp.step!) * comp.step!;
         this.setComponentValue(comp, value);
@@ -268,7 +299,7 @@ export class SettingsScene implements Scene {
         const barX = x + w - barW;
         
         ctx.fillStyle = this.getPanelColor(); ctx.fillRect(barX, barY, barW, barH);
-        ctx.fillStyle = '#5a5a5a'; ctx.fillRect(barX + 2, barY + 2, barW * percentage - 4, barH - 4);
+        ctx.fillStyle = this.getButtonColor(isHovered); ctx.fillRect(barX + 2, barY + 2, barW * percentage - 4, barH - 4);
     }
 
     private renderDropdown(ctx: CanvasRenderingContext2D, comp: UIComponent, isHovered: boolean) {

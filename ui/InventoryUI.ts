@@ -15,6 +15,7 @@ import { InputManager } from '../input/InputManager';
 import { AnimationSystem } from '../rendering/AnimationSystem';
 import { ItemRenderer } from '../rendering/ItemRenderer';
 import { VirtualKeyboard } from '../input/VirtualKeyboard';
+import { SettingsManager } from '../core/SettingsManager';
 
 type UIView = 'none' | 'player_survival' | 'player_creative' | 'crafting_table' | 'furnace' | 'chest';
 type UIContext = {
@@ -27,6 +28,7 @@ interface Slot {
     rect: { x: number, y: number, w: number, h: number };
     inventory: Inventory;
     slotIndex: number;
+    // FIX: Replaced custom SlotUIType with the correctly imported SlotType
     type: SlotType;
     armorType?: 'helmet' | 'chestplate' | 'leggings' | 'boots';
 }
@@ -87,6 +89,10 @@ export class InventoryUI {
         this.inputManager = inputManager;
         this.animationSystem = animationSystem;
         this.updateCreativeItems();
+    }
+
+    private get guiScale(): number {
+        return SettingsManager.instance.settings.graphics.guiScale;
     }
 
     public isOpen(): boolean {
@@ -218,25 +224,48 @@ export class InventoryUI {
             this.creativeScrollY = Math.max(0, Math.min(this.creativeMaxScrollY, this.creativeScrollY));
         }
         
-        const handleSingleClick = (isRight: boolean) => {
+        const handleInteraction = (isRight: boolean) => {
             const clickedSlot = this.getSlotAt(pos.x, pos.y);
+
+            // Handle clicks on slots
             if (clickedSlot) {
                 if(isShiftDown) this.handleShiftClick(clickedSlot);
-                else this.handleSlotClick(clickedSlot, isRight, false);
+                else this.handleSlotClick(clickedSlot, isRight);
                 return;
             }
+
+            // Handle clicks on creative-specific UI
             if (this.handleCreativeGridClick(pos, isRight)) return;
             if (this.handleTabClick(pos)) return;
             if (this.handleSearchClick(pos)) return;
              
-            // Clicked outside any UI element with an item, drop it
-            if (this.draggingItem && !isRight) {
-                 this.actionCallback('dropItem', { 
-                    item: this.draggingItem.item,
-                    position: { x: this.player.position.x + this.player.width / 2, y: this.player.position.y + this.player.height * 0.4 },
-                    velocity: { x: this.player.facingDirection * 6, y: -6 }
-                });
-                this.draggingItem = null;
+            // Handle click outside all interactive elements
+            if (this.draggingItem) {
+                if (isRight) { // Right-click outside drops one item
+                    const droppedItem = {...this.draggingItem.item, count: 1};
+                    if (this.draggingItem.fromSlot?.type !== 'creative_display') {
+                        this.actionCallback('dropItem', { 
+                            item: droppedItem,
+                            position: { x: this.player.position.x + this.player.width / 2, y: this.player.position.y + this.player.height * 0.4 },
+                            velocity: { x: this.player.facingDirection * 6, y: -6 }
+                        });
+                        this.draggingItem.item.count--;
+                        if (this.draggingItem.item.count <= 0) {
+                            this.draggingItem = null;
+                        }
+                    }
+                } else { // Left-click outside drops/deletes whole stack
+                    if (this.draggingItem.fromSlot?.type === 'creative_display') {
+                        this.draggingItem = null; // Delete
+                    } else {
+                        this.actionCallback('dropItem', { 
+                            item: this.draggingItem.item,
+                            position: { x: this.player.position.x + this.player.width / 2, y: this.player.position.y + this.player.height * 0.4 },
+                            velocity: { x: this.player.facingDirection * 6, y: -6 }
+                        });
+                        this.draggingItem = null; // Drop
+                    }
+                }
             }
         };
 
@@ -244,14 +273,20 @@ export class InventoryUI {
             const clickedSlot = this.getSlotAt(pos.x, pos.y);
             if (clickedSlot) this.handleDoubleClick(clickedSlot);
         } else if (this.mouseHandler.isLeftClicked) {
-            handleSingleClick(false);
+            handleInteraction(false);
         } else if (this.mouseHandler.isRightClicked) {
-            handleSingleClick(true);
+            handleInteraction(true);
         }
     }
     
     private handleCreativeGridClick(pos: Vector2, isRight: boolean): boolean {
         if (this.currentView !== 'player_creative' || !this.isPosInRect(pos, this.creativeGridRect)) return false;
+
+        // If dragging an item, clicking in creative grid deletes it.
+        if (this.draggingItem) {
+            this.draggingItem = null;
+            return true;
+        }
         
         const col = Math.floor((pos.x - this.creativeGridRect.x) / 54);
         const row = Math.floor((pos.y - this.creativeGridRect.y + this.creativeScrollY) / 54);
@@ -261,12 +296,12 @@ export class InventoryUI {
             const itemId = this.creativeVisibleItems[index];
             const itemInfo = ItemRegistry.getItemInfo(itemId);
             if (itemInfo) {
-                const stackSize = isRight ? 1 : (this.inputManager.isKeyDown('shift') ? itemInfo.maxStackSize : 1);
-                const newItem = { id: itemId, count: stackSize };
-                const remaining = this.player.inventory.addItem(newItem);
-                if (remaining) {
+                const newItem = { id: itemId, count: itemInfo.maxStackSize };
+                if (this.inputManager.isKeyDown('shift')) {
+                    this.player.inventory.addItem(newItem);
+                } else {
                     this.draggingItem = {
-                        item: remaining,
+                        item: newItem,
                         fromSlot: { inventory: new Inventory(1), slotIndex: -1, type: 'creative_display', rect: {x:0,y:0,w:0,h:0} },
                         originalPosition: pos
                     };
@@ -356,10 +391,26 @@ export class InventoryUI {
     }
 
 
-    private handleSlotClick(slot: Slot, isRightClick: boolean, isDoubleClick: boolean) {
+    private handleSlotClick(slot: Slot, isRightClick: boolean) {
         if (slot.type === 'creative_display') return;
 
         const itemInSlot = slot.inventory.getItem(slot.slotIndex);
+
+        if (this.draggingItem && this.draggingItem.fromSlot?.type === 'creative_display') {
+            const creativeItem = this.draggingItem.item;
+            const itemInfo = ItemRegistry.getItemInfo(creativeItem.id)!;
+            if (isRightClick) {
+                if (!itemInSlot) {
+                    slot.inventory.setItem(slot.slotIndex, {...creativeItem, count: 1});
+                } else if (itemInSlot.id === creativeItem.id && itemInSlot.count < itemInfo.maxStackSize) {
+                    itemInSlot.count++;
+                }
+            } else { // Left click
+                slot.inventory.setItem(slot.slotIndex, {...creativeItem, count: itemInfo.maxStackSize});
+            }
+            // Note: draggingItem is not cleared, allowing placing multiple stacks/items. It's cleared by clicking in the creative grid or outside.
+            return;
+        }
         
         if (slot.type === 'crafting_output' && this.craftResult && !this.draggingItem) {
             const canTakeCount = itemInSlot ? ItemRegistry.getItemInfo(itemInSlot.id)!.maxStackSize - itemInSlot.count : ItemRegistry.getItemInfo(this.craftResult.id)!.maxStackSize;
@@ -442,7 +493,6 @@ export class InventoryUI {
         }
     }
     
-    // ... Layout and Rendering methods ...
     private renderSurvivalInventory(ctx: CanvasRenderingContext2D) {
         const w = 352, h = 332;
         const x = (ctx.canvas.width - w) / 2;
@@ -679,5 +729,24 @@ export class InventoryUI {
     private renderSearchBar(ctx: CanvasRenderingContext2D, x:number, y:number, w:number, h:number){}
     private renderCreativeGrid(ctx: CanvasRenderingContext2D, x:number, y:number, w:number, h:number){}
     private renderInventoryGrid(ctx: CanvasRenderingContext2D, inv: Inventory, x:number, y:number, c:number, r:number, s:number){}
-    private renderDurabilityBar(ctx: CanvasRenderingContext2D, item: Item, x: number, y: number, w: number){}
+    private renderDurabilityBar(ctx: CanvasRenderingContext2D, item: Item, x: number, y: number, width: number) {
+        const itemInfo = ItemRegistry.getItemInfo(item.id);
+        const maxDurability = itemInfo?.toolInfo?.durability || itemInfo?.armorInfo?.durability;
+        
+        if (item.durability === undefined || !maxDurability || item.durability >= maxDurability) return;
+
+        const durabilityPercent = item.durability / maxDurability;
+        const barHeight = 4 * this.guiScale;
+        const barY = y + width - barHeight - (2 * this.guiScale);
+        
+        let barColor = '#00FF00'; // Green
+        if (durabilityPercent < 0.5) barColor = '#FFFF00'; // Yellow
+        if (durabilityPercent < 0.25) barColor = '#FF0000'; // Red
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.fillRect(x + (2 * this.guiScale), barY, width - (4 * this.guiScale), barHeight);
+        
+        ctx.fillStyle = barColor;
+        ctx.fillRect(x + (2 * this.guiScale), barY, (width - (4 * this.guiScale)) * durabilityPercent, barHeight);
+    }
 }

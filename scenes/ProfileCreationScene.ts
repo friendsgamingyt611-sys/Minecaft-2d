@@ -5,6 +5,7 @@ import { VirtualKeyboard } from '../input/VirtualKeyboard';
 import { Vector2 } from '../types';
 import { SoundManager } from '../core/SoundManager';
 import { TitleScene } from './TitleScene';
+import { SettingsManager } from '../core/SettingsManager';
 
 // --- UI Components for this Scene ---
 interface UIComponent {
@@ -167,31 +168,56 @@ export class ProfileCreationScene implements Scene {
 
     update(deltaTime: number): void {
         const mousePos = this.sceneManager.mouseHandler.position;
+        
         this.hoverComponent = null;
-        for (const component of this.uiComponents) {
-            if (mousePos.x >= component.rect.x && mousePos.x <= component.rect.x + component.rect.width &&
-                mousePos.y >= component.rect.y && mousePos.y <= component.rect.y + component.rect.height) {
-                this.hoverComponent = component;
-                break;
+        // Hover detection is mouse-only, check if not on touch device
+        if (SettingsManager.instance.getEffectiveControlScheme() === 'keyboard') {
+            for (const component of this.uiComponents) {
+                if (mousePos.x >= component.rect.x && mousePos.x <= component.rect.x + component.rect.width &&
+                    mousePos.y >= component.rect.y && mousePos.y <= component.rect.y + component.rect.height) {
+                    this.hoverComponent = component;
+                    break;
+                }
             }
         }
         
+        // Combine mouse clicks and touch taps for interaction
+        const interactionPoints: Vector2[] = [...this.sceneManager.touchHandler.justEndedTouches];
         if (this.sceneManager.mouseHandler.isLeftClicked) {
-            if (this.hoverComponent) {
-                if (this.hoverComponent === this.nameInput) {
-                    this.activeComponent = this.nameInput;
-                    VirtualKeyboard.instance.show({
-                        text: this.nameInput.text,
-                        onInput: (t) => this.nameInput.text = t,
-                        onEnter: () => this.createProfile(),
-                        onBlur: () => { if (this.activeComponent === this.nameInput) this.activeComponent = null; }
-                    });
-                } else {
-                    this.activeComponent = null;
-                    VirtualKeyboard.instance.hide();
-                    if(this.hoverComponent.onClick) this.hoverComponent.onClick();
+            interactionPoints.push(this.sceneManager.mouseHandler.position);
+        }
+
+        let didInteractWithComponent = false;
+        if (interactionPoints.length > 0) {
+            for (const pos of interactionPoints) {
+                for (const component of this.uiComponents) {
+                    if (pos.x >= component.rect.x && pos.x <= component.rect.x + component.rect.width &&
+                        pos.y >= component.rect.y && pos.y <= component.rect.y + component.rect.height) {
+                        
+                        didInteractWithComponent = true;
+                        
+                        if (component === this.nameInput) {
+                            this.activeComponent = this.nameInput;
+                            VirtualKeyboard.instance.show({
+                                text: this.nameInput.text,
+                                onInput: (t) => this.nameInput.text = t,
+                                onEnter: () => this.createProfile(),
+                                onBlur: () => { if (this.activeComponent === this.nameInput) this.activeComponent = null; }
+                            });
+                        } else {
+                            this.activeComponent = null;
+                            VirtualKeyboard.instance.hide();
+                            if (component.onClick) {
+                                component.onClick();
+                            }
+                        }
+                        break; // Process one component per interaction point
+                    }
                 }
-            } else {
+                if (didInteractWithComponent) break; // Process one interaction point per frame
+            }
+            
+            if (!didInteractWithComponent) {
                 this.activeComponent = null;
                 VirtualKeyboard.instance.hide();
             }

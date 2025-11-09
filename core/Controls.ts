@@ -1,5 +1,3 @@
-
-
 import { InputManager } from "../input/InputManager";
 import { MouseHandler } from "../input/MouseHandler";
 import { TouchHandler } from "../input/TouchHandler";
@@ -18,6 +16,7 @@ export class ControlManager {
     // FEAT: Add state for double-tap to sprint
     private lastMoveKeyPress = { key: '', time: 0 };
     private readonly DOUBLE_TAP_TIME = 300; // ms
+    private wasTouchSprinting: boolean = false;
 
     constructor(inputManager: InputManager, mouseHandler: MouseHandler, touchHandler: TouchHandler) {
         this.inputManager = inputManager;
@@ -75,7 +74,8 @@ export class ControlManager {
         
         // Final state processing
         // FEAT: Sprint is cancelled when movement stops, just like Minecraft
-        if (this.inputState.moveX === 0 && !this.inputState.jump.pressed) {
+        const isMoving = scheme === 'keyboard' ? this.inputState.moveX !== 0 : this.touchHandler.getJoystick().x !== 0;
+        if (!isMoving && !this.inputState.jump.pressed) {
             this.isSprintToggled = false;
         }
 
@@ -178,7 +178,7 @@ export class ControlManager {
             if (controls.toggleSprint) {
                 this.inputState.sprint.pressed = this.isSprintToggled;
             } else {
-                this.inputState.sprint.pressed = this.touchHandler.isButtonPressed('sprint');
+                this.inputState.sprint.pressed = this.touchHandler.isSprinting;
             }
         }
     }
@@ -204,11 +204,16 @@ export class ControlManager {
         }
         this.inputState.shift = isSneakBtnDown;
 
-        // Sprint Logic
-        this.inputState.sprint.justPressed = this.touchHandler.isButtonPressed('sprint', true);
+        // Sprint Logic using joystick gesture
+        const isTouchSprintingNow = this.touchHandler.isSprinting;
         if (controls.toggleSprint) {
-            if (this.inputState.sprint.justPressed) this.isSprintToggled = !this.isSprintToggled;
+            // If sprint just started this frame, toggle the state
+            if (isTouchSprintingNow && !this.wasTouchSprinting) {
+                this.isSprintToggled = !this.isSprintToggled;
+            }
         }
+        this.wasTouchSprinting = isTouchSprintingNow;
+
         
         this.inputState.destroy = this.touchHandler.isButtonPressed('action');
         this.inputState.place = this.touchHandler.isButtonPressed('action', true);
